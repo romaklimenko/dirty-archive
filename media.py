@@ -1,6 +1,7 @@
 import os
 import hashlib
 
+from pprint import pprint
 from urllib.parse import urlparse
 from urllib.request import urlopen
 
@@ -59,15 +60,21 @@ for media in media_collection.find({'hash': { '$exists': False } }):
     except Exception as e:
       print('❌ Can\'t parse image', url, e)
 
-  blob = storage.Blob(media['hash'], bucket)
-  blob.metadata = {
-    'url': media['_id'],
-    'filename': media['filename']
-  }
-  blob.upload_from_string(content, content_type=media['content_type'])
+  try:
+    blob = storage.Blob(media['hash'], bucket)
+    blob.metadata = {
+      'url': media['_id'],
+      'filename': media['filename']
+    }
+    blob.upload_from_string(content, content_type=media['content_type'])
+  except Exception as e:
+    print('❌ Can\'t upload blob', url, e)
 
-  print(media)
-  media_collection.replace_one({ '_id': media['_id'] }, media)
+  try:
+    pprint(media)
+    media_collection.replace_one({ '_id': media['_id'] }, media)
+  except Exception as e:
+    print('❌ Can\'t update database', url, e)
 
   count -= 1
 
