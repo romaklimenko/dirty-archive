@@ -47,6 +47,7 @@ else: # без аргументов - обновляем все посты и к
   posts_to_process = to_id - from_id
   skip_if_failed_before = True
   failures_collection.delete_many({ 'failed': { '$lt': easing_threshold } })
+  failures_collection.delete_many({ 'error': { '$ne': '404' } })
 
 processed_posts = 0
 
