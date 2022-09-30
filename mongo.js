@@ -34,6 +34,12 @@ createIndex("failures", { "failed": 1 });
 createIndex("failures", { "error": 1 });
 
 createIndex("media", { "usage": 1 });
+createIndex("media", { "ts": 1 });
 createIndex("media", { "hash": 1 });
+createIndex("media", { "filename": 1 });
+createIndex("media", { "content_type": 1 });
+createIndex("media", { "length": 1 });
+createIndex("media", { "error": 1 });
+createIndex("media", { "selected": 1 });
 
 print("All indexes are created ✅");

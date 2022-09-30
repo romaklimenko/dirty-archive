@@ -17,23 +17,28 @@ load_dotenv()
 gcs_client = storage.Client()
 bucket = gcs_client.get_bucket('futurico')
 
-count = media_collection.count_documents({'hash': { '$exists': False } })
+query = {'hash': { '$exists': False }, 'error': { '$ne': 'HTTP Error 404: Not Found' } }
+
+count = media_collection.count_documents(query)
 media_to_process = count
 
-for media in media_collection.find({'hash': { '$exists': False } }):  
+for media in media_collection.find(query):
   url = media['_id']
 
   print(format_number(count), f'{round((media_to_process - count) / media_to_process * 100)}%', url)
+  count -= 1
 
   try:
     response = urlopen(url)
+    content = response.read()
   except Exception as e:
     print('❌', url, e)
+    media_collection.update_one({ '_id': url }, { '$set': { 'error': str(e) } })
     continue
-    
-  media['content_type'] = response.info().get_content_type()
   
-  content = urlopen(url).read()
+  if 'error' in media:
+    del media['error']
+  media['content_type'] = response.info().get_content_type()
   media['hash'] = hashlib.sha256(content).hexdigest()
   media['length'] = len(content)
   
@@ -75,7 +80,5 @@ for media in media_collection.find({'hash': { '$exists': False } }):
     media_collection.replace_one({ '_id': media['_id'] }, media)
   except Exception as e:
     print('❌ Can\'t update database', url, e)
-
-  count -= 1
 
   print()

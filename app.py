@@ -34,7 +34,7 @@ def process_post(id):
   for media in post['media']:
     media_collection.update_one(
       { '_id': media },
-      { '$addToSet': { 'usage': post['url'] } },
+      { '$addToSet': { 'usage': post['url'], 'ts': post['created'] } },
       upsert=True)
 
   result = posts_collection.replace_one({"_id": post['_id']}, post, upsert=True)
@@ -61,7 +61,7 @@ def process_post(id):
     for media in comment['media']:
       media_collection.update_one(
         { '_id': media },
-        { '$addToSet': { 'usage': comment['url'] } },
+        { '$addToSet': { 'usage': comment['url'], 'ts': post['created'] } },
         upsert=True)
 
     result = comments_collection.replace_one({"_id": comment["_id"]}, comment, upsert=True)
