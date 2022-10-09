@@ -61,7 +61,7 @@ def process_post(id):
     for media in comment['media']:
       media_collection.update_one(
         { '_id': media },
-        { '$addToSet': { 'usage': comment['url'], 'ts': post['created'] } },
+        { '$addToSet': { 'usage': comment['url'], 'ts': comment['created'] } },
         upsert=True)
 
     result = comments_collection.replace_one({"_id": comment["_id"]}, comment, upsert=True)
