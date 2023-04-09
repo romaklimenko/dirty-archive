@@ -20,7 +20,7 @@ def latest_post_activity(post):
 def process_post(id):
   need_line_break = False
 
-  response = requests.get(f"https://d3.ru/api/posts/{id}/")
+  response = requests.get(f"https://d3.ru/api/posts/{id}/", timeout=30)
   if response.status_code != 200:
     raise Exception(response.status_code)
   post = response.json()
@@ -42,7 +42,10 @@ def process_post(id):
     need_line_break = True
     print(f"💥 пост {post['url']} от {time.strftime('%Y.%m.%d', time.gmtime(post['created']))}")
   
-  comments = requests.get(f"https://d3.ru/api/posts/{id}/comments/").json()['comments']
+  comments_response = requests.get(f"https://d3.ru/api/posts/{id}/comments/", timeout=30)
+  if comments_response.status_code != 200:
+    raise Exception(comments_response.status_code)
+  comments = comments_response.json()['comments']
   
   for comment in comments:
     if 'body' not in comment:
