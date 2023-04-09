@@ -14,6 +14,8 @@ from mongo import media_collection
 from dotenv import load_dotenv
 load_dotenv()
 
+os.environ['GOOGLE_APPLICATION_CREDENTIALS'] = os.path.abspath('account-key.json')
+
 gcs_client = storage.Client()
 bucket = gcs_client.get_bucket('futurico')
 
