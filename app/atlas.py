@@ -14,12 +14,13 @@ count = 0
 docs = list()
 
 for doc in local_media_collection.find(
-   { 'content_type': { '$regex': '^(image|video)' }, 'usage.1': { '$exists': True } },
-   { 'usage': 1, 'content_type': 1 }):
-   count += 1
-   doc['url'] = doc['_id']
-   doc['_id'] = count
-   docs.append(doc)
+    {'content_type': {'$regex': '^(image|video)'}, 'usage.1': {
+        '$exists': True}},
+        {'usage': 1, 'content_type': 1}):
+    count += 1
+    doc['url'] = doc['_id']
+    doc['_id'] = count
+    docs.append(doc)
 
 print(count)
 
@@ -28,19 +29,19 @@ atlas_media_collection = atlas_db['media']
 
 atlas_media_collection.insert_many(docs)
 
-### 
+###
 
 count = 0
 
 docs = list()
 
 for doc in local_media_collection.find(
-   { 'selected': True },
-   { 'usage': 1, 'content_type': 1 }):
-   count += 1
-   doc['url'] = doc['_id']
-   doc['_id'] = count
-   docs.append(doc)
+    {'selected': True},
+        {'usage': 1, 'content_type': 1}):
+    count += 1
+    doc['url'] = doc['_id']
+    doc['_id'] = count
+    docs.append(doc)
 
 print(count)
 
