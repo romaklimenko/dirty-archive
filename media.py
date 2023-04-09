@@ -29,7 +29,7 @@ for media in media_collection.find(query):
   count -= 1
 
   try:
-    response = urlopen(url)
+    response = urlopen(url, timeout=60)
     content = response.read()
   except Exception as e:
     print('❌', url, e)

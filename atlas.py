@@ -14,7 +14,7 @@ count = 0
 docs = list()
 
 for doc in local_media_collection.find(
-   { 'content_type': { '$regex': '^(image|video)' } },
+   { 'content_type': { '$regex': '^(image|video)' }, 'usage.1': { '$exists': True } },
    { 'usage': 1, 'content_type': 1 }):
    count += 1
    doc['url'] = doc['_id']

@@ -19,7 +19,7 @@ to_id = 5 * 1_000_000
 
 skip_if_failed_before = False
 
-easing_threshold = int(time.time()) - 60 * 60 * 24 * 30 * 3
+easing_threshold = int(time.time()) - (60 * 60 * 24) * (30 * 3)
 
 if len(sys.argv) == 3: # два аргумента - начальный и конечный id поста: posts.py <from_id> <to_id>
   from_id = int(sys.argv[1])
