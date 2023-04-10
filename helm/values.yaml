@@ -1,0 +1,15 @@
+image:
+  repository: "romaklimenko.azurecr.io/dirty-archive"
+  tag: "latest"
+
+schedules:
+  postsAll: "0 0 * * *"
+  postsLastWeek: "0 * * * *"
+  media: "30 * * * *"
+
+imagePullSecrets:
+- "acr-pull"
+
+accountKeySecret: "account-key"
+
+mongo: "mongodb://mongodb:27017/dirty"

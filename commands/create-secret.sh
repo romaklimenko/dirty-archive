@@ -1,0 +1,1 @@
+kubectl create secret generic account-key --from-file=account-key.json=./account-key.json

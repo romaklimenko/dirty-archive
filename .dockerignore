@@ -1,0 +1,10 @@
+__pycache__
+.DS_Store
+.env
+/commands
+/helm
+/mongo
+account-key.json
+Dockerfile
+README.md
+test.py

@@ -1,5 +1,6 @@
 flask
 google-cloud-storage
+Pillow
 pymongo
 python-dotenv
 requests

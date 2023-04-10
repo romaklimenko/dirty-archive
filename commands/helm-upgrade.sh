@@ -1,0 +1,1 @@
+helm upgrade dirty-archive ./helm --install

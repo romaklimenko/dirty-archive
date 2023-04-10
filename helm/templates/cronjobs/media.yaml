@@ -1,0 +1,51 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: media
+  labels:
+    {{- include "labels" . | nindent 4 }}
+spec:
+  schedule: {{ .Values.schedules.media | quote }}
+  jobTemplate:
+    spec:
+      ttlSecondsAfterFinished: 300
+      template:
+        spec:
+          containers:
+            - name: media
+              image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default "latest" }}"
+              imagePullPolicy: Always
+              env:
+              - name: MONGO_CONNECTION_STRING
+                value: "{{ .Values.mongo }}"
+              - name: MONGO_DB_NAME
+                value: dirty
+              - name: POSTS_COLLECTION_NAME
+                value: posts
+              - name: COMMENTS_COLLECTION_NAME
+                value: comments
+              - name: MEDIA_COLLECTION_NAME
+                value: media
+              - name: FAILURES_COLLECTION_NAME
+                value: failures
+              - name: GOOGLE_APPLICATION_CREDENTIALS
+                value: /etc/account-key/account-key.json
+              volumeMounts:
+              - name: account-key
+                mountPath: "/etc/account-key"
+                readOnly: true
+              command:
+                - python
+                - ./app/media.py
+          volumes:
+          - name: account-key
+            secret:
+              secretName: "{{ .Values.accountKeySecret }}"
+          restartPolicy: Never
+          {{- if (not (empty .Values.imagePullSecrets)) }}
+          imagePullSecrets:
+            {{- range .Values.imagePullSecrets }}
+            - name: {{ . | quote }}
+            {{- end }}
+          {{ end }}
+      backoffLimit: 1
