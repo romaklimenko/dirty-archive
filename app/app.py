@@ -48,9 +48,11 @@ def process_post(id):
 
     comments_response = requests.get(
         f"https://d3.ru/api/posts/{id}/comments/", timeout=30)
-    if comments_response.status_code != 200:
-        raise Exception(comments_response.status_code)
-    comments = comments_response.json()['comments']
+
+    comments = []
+
+    if comments_response.status_code == 200:
+        comments = comments_response.json()['comments']
 
     for comment in comments:
         if 'body' not in comment:

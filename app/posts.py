@@ -19,7 +19,7 @@ to_id = 5 * 1_000_000
 
 skip_if_failed_before = False
 
-easing_threshold = int(time.time()) - (60 * 60 * 24) * (30 * 3)
+easing_threshold = int(time.time()) - (60 * 60 * 24) * 30
 
 if len(sys.argv) == 3:  # два аргумента - начальный и конечный id поста: posts.py <from_id> <to_id>
     from_id = int(sys.argv[1])
@@ -47,7 +47,6 @@ else:  # без аргументов - обновляем все посты и �
     posts_to_process = to_id - from_id
     skip_if_failed_before = True
     failures_collection.delete_many({'failed': {'$lt': easing_threshold}})
-    failures_collection.delete_many({'error': {'$ne': '404'}})
 
 processed_posts = 0
 
@@ -74,7 +73,7 @@ for id in ids:
             iteration_start = int(time.time())
             iteration_start_processed_posts = processed_posts
 
-        force_fetch = random.random() < 1 / 100
+        force_fetch = random.random() < 1 / 1000
 
         if not force_fetch:
 
@@ -98,19 +97,19 @@ for id in ids:
 
         errors = 0
     except Exception as e:
+        traceback_str = traceback.format_exc()
         failures_collection.replace_one(
             {'_id': f'post_id#{id}'},
             {
                 '_id': f'post_id#{id}',
                 'error': str(e),
-                'traceback': traceback.format_exc(),
+                'traceback': traceback_str,
                 'failed': int(time.time())
             }, upsert=True)
         if processed_posts > posts_to_process:
             processed_posts -= 1
         if str(e) != '404':
             print(f"🐤 ❌ { format_number(processed_posts - posts_to_process) } { round(processed_posts / posts_to_process * 100) }% https://d3.ru/{id}/\nОшибка: {e}\nОставшиеся попытки: {format_number(max_errors - errors)}\n")
-            # raise e
-            traceback.print_exc()
+            print(traceback_str)
         errors += 1
         continue
