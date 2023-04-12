@@ -2,14 +2,21 @@ image:
   repository: "romaklimenko.azurecr.io/dirty-archive"
   tag: "latest"
 
-schedules:
-  postsAll: "0 0 * * *"
-  postsLastWeek: "0 * * * *"
-  media: "30 * * * *"
-
 imagePullSecrets:
 - "acr-pull"
 
 accountKeySecret: "account-key"
 
 mongo: "mongodb://mongodb:27017/dirty"
+
+postsAll:
+  schedule: "0 0 * * *"
+  ttlSecondsAfterFinished: 43200
+
+postsLastWeek:
+  schedule: "0 * * * *"
+  ttlSecondsAfterFinished: 60
+
+media:
+  schedule: "15 * * * *"
+  ttlSecondsAfterFinished: 60

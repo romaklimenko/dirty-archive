@@ -5,10 +5,10 @@ metadata:
   labels:
     {{- include "labels" . | nindent 4 }}
 spec:
-  schedule: {{ .Values.schedules.postsLastWeek | quote }}
+  schedule: {{ .Values.postsLastWeek.schedule | quote }}
   jobTemplate:
     spec:
-      ttlSecondsAfterFinished: 300
+      ttlSecondsAfterFinished: {{ .Values.postsLastWeek.ttlSecondsAfterFinished }}
       template:
         spec:
           containers:
@@ -16,6 +16,8 @@ spec:
               image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default "latest" }}"
               imagePullPolicy: Always
               env:
+              - name: PYTHONUNBUFFERED
+                value: "true"
               - name: MONGO_CONNECTION_STRING
                 value: "{{ .Values.mongo }}"
               - name: MONGO_DB_NAME
