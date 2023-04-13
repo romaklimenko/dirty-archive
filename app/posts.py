@@ -82,7 +82,7 @@ for id in ids:
                     'id': id,
                     'fetched': {'$gt': easing_threshold},
                     'latest_activity': {'$lt': easing_threshold}
-                }) > 0 and random.random() > 1 / 100): # дадим небольшой шанс
+                }) > 0 and random.random() > 1 / 100):  # дадим небольшой шанс
             errors = 0
             continue
 

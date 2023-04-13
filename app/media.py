@@ -30,8 +30,9 @@ media_to_process = count
 for media in media_collection.find(query):
     url = media['_id']
 
-    print(format_number(count),
-          f'{round((media_to_process - count) / media_to_process * 100)}%', url)
+    print(
+        f'{format_number(media_to_process - count + 1)} of {format_number(media_to_process)} ({round((media_to_process - count) / media_to_process * 100)}%)',
+        url)
     count -= 1
 
     try:
