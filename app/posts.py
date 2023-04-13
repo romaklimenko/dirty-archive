@@ -73,27 +73,22 @@ for id in ids:
             iteration_start = int(time.time())
             iteration_start_processed_posts = processed_posts
 
-        force_fetch = random.random() < 1 / 1000
+        # если мы уже спотыкались на этом посте ранее
+        if skip_if_failed_before and failures_collection.count_documents({'_id': f'post_id#{id}'}) > 0:
+            continue  # пропускаем его, но не сбрасываем счетчик ошибок
 
-        if not force_fetch:
-
-            # если мы уже спотыкались на этом посте ранее
-            if skip_if_failed_before and failures_collection.count_documents({'_id': f'post_id#{id}'}) > 0:
-                continue  # пропускаем его, но не сбрасываем счетчик ошибок
-
-            if (posts_collection.count_documents(
-                    {
-                        'id': id,
-                        'fetched': {'$gt': easing_threshold},
-                        'latest_activity': {'$lt': easing_threshold}
-                    }) > 0):
-                errors = 0
-                continue
+        if (posts_collection.count_documents(
+                {
+                    'id': id,
+                    'fetched': {'$gt': easing_threshold},
+                    'latest_activity': {'$lt': easing_threshold}
+                }) > 0 and random.random() > 1 / 100): # дадим небольшой шанс
+            errors = 0
+            continue
 
         (post, comments) = process_post(id)
 
-        if not skip_if_failed_before or force_fetch:
-            failures_collection.delete_one({'_id': f'post_id#{id}'})
+        failures_collection.delete_one({'_id': f'post_id#{id}'})
 
         errors = 0
     except Exception as e:
