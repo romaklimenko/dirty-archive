@@ -1,14 +1,14 @@
 apiVersion: batch/v1
 kind: CronJob
 metadata:
-  name: posts-last-week
+  name: posts-{{ .Values.recentPosts.days }}-days
   labels:
     {{- include "labels" . | nindent 4 }}
 spec:
-  schedule: {{ .Values.postsLastWeek.schedule | quote }}
+  schedule: {{ .Values.recentPosts.schedule | quote }}
   jobTemplate:
     spec:
-      ttlSecondsAfterFinished: {{ .Values.postsLastWeek.ttlSecondsAfterFinished }}
+      ttlSecondsAfterFinished: {{ .Values.recentPosts.ttlSecondsAfterFinished }}
       template:
         spec:
           containers:
@@ -39,7 +39,7 @@ spec:
               command:
                 - python
                 - ./app/posts.py
-                - "7"
+                - "{{ .Values.recentPosts.days }}"
           volumes:
           - name: account-key
             secret:

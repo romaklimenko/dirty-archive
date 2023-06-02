@@ -22,7 +22,7 @@ for doc in local_media_collection.find(
     doc['_id'] = count
     docs.append(doc)
 
-print(count)
+print(f'uploading {count} documents to atlas:')
 
 atlas_db.drop_collection('media')
 atlas_media_collection = atlas_db['media']
@@ -31,21 +31,21 @@ atlas_media_collection.insert_many(docs)
 
 ###
 
-count = 0
+# count = 0
 
-docs = list()
+# docs = list()
 
-for doc in local_media_collection.find(
-    {'selected': True},
-        {'usage': 1, 'content_type': 1}):
-    count += 1
-    doc['url'] = doc['_id']
-    doc['_id'] = count
-    docs.append(doc)
+# for doc in local_media_collection.find(
+#     {'selected': True},
+#         {'usage': 1, 'content_type': 1}):
+#     count += 1
+#     doc['url'] = doc['_id']
+#     doc['_id'] = count
+#     docs.append(doc)
 
-print(count)
+# print(count)
 
-atlas_db.drop_collection('media_selected')
-atlas_media_selected_collection = atlas_db['media_selected']
+# atlas_db.drop_collection('media_selected')
+# atlas_media_selected_collection = atlas_db['media_selected']
 
-atlas_media_selected_collection.insert_many(docs)
+# atlas_media_selected_collection.insert_many(docs)

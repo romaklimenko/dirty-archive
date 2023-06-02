@@ -7,16 +7,16 @@ function createIndex(collectionName, data) {
 }
 
 createIndex("posts", { id: 1 });
-createIndex("posts", { title: 1 });
+// createIndex("posts", { title: 1 });
 createIndex("posts", { created: 1 });
 createIndex("posts", { date: 1 });
 createIndex("posts", { rating: 1 });
-createIndex("posts", { url: 1 });
+// createIndex("posts", { url: 1 });
 createIndex("posts", { "user.login": 1 });
 createIndex("posts", { "domain.prefix": 1 });
 createIndex("posts", { media: 1 });
-createIndex("posts", { id: 1, fetched: -1 });
-createIndex("posts", { fetched: 1 });
+
+createIndex("posts", { latest_activity: 1, fetched: 1 });
 
 createIndex("comments", { id: 1 });
 createIndex("comments", { post_id: 1 });
@@ -30,8 +30,9 @@ createIndex("comments", { media: 1 });
 createIndex("comments", { body: "text" });
 createIndex("comments", { fetched: 1 });
 
-createIndex("failures", { failed: 1 });
+createIndex("failures", { failed: -1 });
 createIndex("failures", { error: 1 });
+createIndex("failures", { lock: -1 });
 
 createIndex("media", { usage: 1 });
 createIndex("media", { ts: 1 });

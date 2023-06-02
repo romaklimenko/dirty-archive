@@ -5,10 +5,10 @@ metadata:
   labels:
     {{- include "labels" . | nindent 4 }}
 spec:
-  schedule: {{ .Values.postsAll.schedule | quote }}
+  schedule: {{ .Values.allPosts.schedule | quote }}
   jobTemplate:
     spec:
-      ttlSecondsAfterFinished: {{ .Values.postsAll.ttlSecondsAfterFinished }}
+      ttlSecondsAfterFinished: {{ .Values.allPosts.ttlSecondsAfterFinished }}
       template:
         spec:
           containers:

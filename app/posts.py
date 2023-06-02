@@ -1,3 +1,6 @@
+# pylint: disable=missing-module-docstring, missing-function-docstring, missing-class-docstring
+from mongo import posts_collection, failures_collection
+from app import process_post, format_number
 import random
 import sys
 import time
@@ -5,11 +8,9 @@ import traceback
 
 from pymongo import ASCENDING, DESCENDING
 
-from app import process_post, format_number
-from mongo import posts_collection, failures_collection
-
 from dotenv import load_dotenv
 load_dotenv()
+
 
 max_errors = 10_000
 errors = 0
@@ -21,11 +22,8 @@ skip_if_failed_before = False
 
 easing_threshold = int(time.time()) - (60 * 60 * 24) * 30
 
-if len(sys.argv) == 3:  # два аргумента - начальный и конечный id поста: posts.py <from_id> <to_id>
-    from_id = int(sys.argv[1])
-    to_id = int(sys.argv[2])
-    posts_to_process = to_id - from_id
-elif len(sys.argv) == 2:  # один аргумент - на сколько дней назад обновлять посты и комментарии: posts.py <days_ago>
+# один аргумент - на сколько дней назад обновлять посты и комментарии: posts.py <days_ago>
+if len(sys.argv) == 2:
     days_to_refresh = int(sys.argv[1])
     recent_post = posts_collection.find({}).sort('id', DESCENDING).limit(1)[0]
 
@@ -50,12 +48,87 @@ else:  # без аргументов - обновляем все посты и �
 
 processed_posts = 0
 
-iteration_start = int(time.time())
 iteration_start_processed_posts = processed_posts
 
+
+def get_lock_timestamp():
+    return int(time.time()) + (60 * 60 * 24) * 1
+
+
+def get_posts_to_skip():
+    condition = {
+        '$and': [
+            {
+                'latest_activity': {'$lt': easing_threshold},
+                'fetched': {'$gt': easing_threshold}
+            },
+            {
+                '$or': [{'lock': {'$gt': time.time()}}, {'lock': {'$exists': False}}]
+            }
+        ]
+    }
+    for post in posts_collection.find(condition, {'id': 1}):
+        posts_to_skip.add(post['id'])
+
+    posts_collection.update_many(
+        condition, {'$set': {'lock': get_lock_timestamp()}})
+
+    return posts_to_skip
+
+
+def get_failures_to_skip():
+    condition = {
+        '$and': [
+            {
+                'failed': {'$gt': easing_threshold},
+            },
+            {
+                '$or': [{'lock': {'$gt': time.time()}}, {'lock': {'$exists': False}}]
+            }
+        ]
+    }
+
+    for failure in failures_collection.find(condition):
+        failures_to_skip.add(failure['_id'])
+
+    failures_collection.update_many(
+        condition, {'$set': {'lock': get_lock_timestamp()}})
+
+    return failures_to_skip
+
+
 ids = list(range(from_id, to_id))
-if len(sys.argv) < 2:
-    random.shuffle(ids)
+
+posts_to_skip = set()
+failures_to_skip = set()
+
+if skip_if_failed_before:
+    failures_to_skip = get_failures_to_skip()
+    print(
+        f'Пропускаем посты, при получении которых произошли ошибки: {format_number(len(failures_to_skip))} шт.')
+
+    posts_to_skip = get_posts_to_skip()
+    print(
+        f'Пропускаем посты, которые мы недавно обработали: {format_number(len(posts_to_skip))} шт.')
+
+    def should_process(id):
+        PROBABILITY = 1 / 1000  # дадим небольшой шанс
+
+        if id in posts_to_skip:
+            posts_to_skip.remove(id)
+        elif f'post_id#{id}' in failures_to_skip:
+            failures_to_skip.remove(f'post_id#{id}')
+        else:
+            return True
+
+        return random.random() < PROBABILITY
+
+    ids = list(filter(should_process, ids))
+    posts_to_process = len(ids)
+
+ids.sort()
+
+iteration_start = int(time.time())
 
 for id in ids:
     if errors > max_errors:
@@ -72,19 +145,6 @@ for id in ids:
             print(f"🐤 { remaining_posts } { processed_percent }% { str(elapsed).rjust(4, ' ') }sec { str(round(posts_in_iteration / elapsed)).rjust(4, ' ') }posts/sec")
             iteration_start = int(time.time())
             iteration_start_processed_posts = processed_posts
-
-        # если мы уже спотыкались на этом посте ранее
-        if skip_if_failed_before and failures_collection.count_documents({'_id': f'post_id#{id}'}) > 0:
-            continue  # пропускаем его, но не сбрасываем счетчик ошибок
-
-        if (posts_collection.count_documents(
-                {
-                    'id': id,
-                    'fetched': {'$gt': easing_threshold},
-                    'latest_activity': {'$lt': easing_threshold}
-                }) > 0 and random.random() > 1 / 100):  # дадим небольшой шанс
-            errors = 0
-            continue
 
         (post, comments) = process_post(id)
 
