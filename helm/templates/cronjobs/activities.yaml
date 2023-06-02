@@ -1,18 +1,18 @@
 apiVersion: batch/v1
 kind: CronJob
 metadata:
-  name: posts-{{ .Values.recentPosts.days }}-days
+  name: activities
   labels:
     {{- include "labels" . | nindent 4 }}
 spec:
-  schedule: {{ .Values.recentPosts.schedule | quote }}
+  schedule: {{ .Values.activities.schedule | quote }}
   jobTemplate:
     spec:
-      ttlSecondsAfterFinished: {{ .Values.recentPosts.ttlSecondsAfterFinished }}
+      ttlSecondsAfterFinished: {{ .Values.activities.ttlSecondsAfterFinished }}
       template:
         spec:
           containers:
-            - name: posts-last-week
+            - name: activities
               image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default "latest" }}"
               imagePullPolicy: Always
               env:
@@ -32,6 +32,8 @@ spec:
                 value: failures
               - name: GOOGLE_APPLICATION_CREDENTIALS
                 value: /etc/account-key/account-key.json
+              - name: ACTIVITIES_SKIP_PROBABILITY_DENOMINATOR
+                value: "{{ .Values.activities.skipProbabilityDenominator }}"
               volumeMounts:
               - name: account-key
                 mountPath: "/etc/account-key"
@@ -39,7 +41,6 @@ spec:
               command:
                 - python
                 - ./app/posts.py
-                - "{{ .Values.recentPosts.days }}"
           volumes:
           - name: account-key
             secret:

@@ -9,14 +9,10 @@ accountKeySecret: "account-key"
 
 mongo: "mongodb://mongodb:27017/dirty"
 
-allPosts:
-  schedule: "0 */2 * * *"
+activities:
+  schedule: "0 * * * *"
   ttlSecondsAfterFinished: 3600
-
-recentPosts:
-  schedule: "0 1-23/2 * * *"
-  ttlSecondsAfterFinished: 60
-  days: 30
+  skipProbabilityDenominator: 1000
 
 media:
   schedule: "0 * * * *"
