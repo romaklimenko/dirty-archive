@@ -43,4 +43,7 @@ createIndex("media", { length: 1 });
 createIndex("media", { error: 1 });
 createIndex("media", { selected: 1 });
 
+createIndex("votes", { post_id: 1, vote: 1, changed: 1, user_login: 1, user_id: 1 }, { unique: true });
+createIndex("votes", { post_id: 1, comment_id: 1, vote: 1, changed: 1, user_login: 1, user_id: 1 }, { unique: true });
+
 print("All indexes are created ✅");

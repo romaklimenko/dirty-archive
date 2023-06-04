@@ -3,15 +3,15 @@ import os
 import random
 import time
 import traceback
-from datetime import timedelta
+from datetime import timedelta, datetime
 
-from pymongo import DESCENDING
+from pymongo import ASCENDING, DESCENDING
 
 from app import format_number, process_post
 from mongo import failures_collection, posts_collection
 
 process_start = int(time.time())
-print(timedelta(seconds=0), 'Начинаем обработку')
+print(timedelta(seconds=0), 'Начинаем обработку.')
 
 
 def get_timedelta():
@@ -21,22 +21,23 @@ def get_timedelta():
 errors = 0
 
 easing_threshold = int(time.time()) - (60 * 60 * 24) * 30
+print(f'{get_timedelta()} Пороговое время: {datetime.fromtimestamp(easing_threshold)}.')
 
 recent_post = posts_collection.find({}).sort('id', DESCENDING).limit(1)[0]
 recent_post_id = 1_000_000
 if recent_post is not None:
     recent_post_id = recent_post['id']
-print(f'{get_timedelta()} Последний пост: https://d3.ru/{recent_post_id}/.')
+print(f'{get_timedelta()} Последний пост в базе данных: https://d3.ru/{recent_post_id}/.')
 
 post_id_threshold = list(
     posts_collection
-    .find({'created': {'$gt': recent_post['created'] - easing_threshold}})
-    .sort('created', DESCENDING)
+    .find({'created': {'$gt': easing_threshold}})
+    .sort('created', ASCENDING)
     .limit(1))[0]['id']
-print(f'{get_timedelta()} Пороговый id поста: {post_id_threshold}.')
+print(f'{get_timedelta()} Пороговый пост: https://d3.ru/{post_id_threshold}/.')
 
 failures_collection.delete_many({'failed': {'$lt': easing_threshold}})
-print(f'{get_timedelta()} Удалили ошибки, которые произошли более порогового времени назад.')
+print(f'{get_timedelta()} Удалили ошибки, которые произошли до порогового времени.')
 
 processed_posts = 0
 
@@ -108,9 +109,10 @@ def should_process(post_id):  # pylint: disable=redefined-outer-name
         posts_to_skip.remove(post_id)
     elif f'post_id#{post_id}' in failures_to_skip:
         failures_to_skip.remove(f'post_id#{post_id}')
-    elif post_id > post_id_threshold:
-        return True
     else:
+        return True
+
+    if post_id > post_id_threshold:
         return True
 
     # дадим небольшой шанс

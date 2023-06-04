@@ -30,10 +30,22 @@ spec:
                 value: media
               - name: FAILURES_COLLECTION_NAME
                 value: failures
+              - name: VOTES_COLLECTION_NAME
+                value: votes
               - name: GOOGLE_APPLICATION_CREDENTIALS
                 value: /etc/account-key/account-key.json
               - name: ACTIVITIES_SKIP_PROBABILITY_DENOMINATOR
                 value: "{{ .Values.activities.skipProbabilityDenominator }}"
+              - name: UID
+                valueFrom:
+                  secretKeyRef:
+                    name: {{.Values.dirtyCredentialsSecret}}
+                    key: uid
+              - name: SID
+                valueFrom:
+                  secretKeyRef:
+                    name: {{.Values.dirtyCredentialsSecret}}
+                    key: sid
               volumeMounts:
               - name: account-key
                 mountPath: "/etc/account-key"
