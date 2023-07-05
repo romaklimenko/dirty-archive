@@ -11,10 +11,10 @@ dirtyCredentialsSecret: "dirty-credentials"
 mongo: "mongodb://mongodb:27017/dirty"
 
 activities:
+  schedule: "*/15 * * * *"
+  ttlSecondsAfterFinished: 3600
+  skipProbabilityDenominator: 1000 # 1 - (1 - 1/1000)^(24 * 30) = 0,51342306
+
+votes:
   schedule: "0 * * * *"
   ttlSecondsAfterFinished: 3600
-  skipProbabilityDenominator: 2500 # 1 - (1 - 1/2500)^(24 * 30) = 0.25
-
-media:
-  schedule: "0 * * * *"
-  ttlSecondsAfterFinished: 60

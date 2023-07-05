@@ -21,11 +21,12 @@ def latest_post_activity(post):
 def process_post(post_id):
     need_line_break = False
 
-    response = requests.get(f"https://d3.ru/api/posts/{post_id}/", timeout=30)
+    response = requests.get(f"https://d3.ru/api/posts/{post_id}/", timeout=10)
     if response.status_code != 200:
         raise Exception(  # pylint: disable=broad-exception-raised
             response.status_code)
     post = response.json()
+
     post["_id"] = f"{post['id']}.{post['changed']}"
     post['url'] = f"https://d3.ru/{post['id']}"
     post['fetched'] = int(time.time())
@@ -33,24 +34,30 @@ def process_post(post_id):
     post['media'] = get_post_media(post)
     post['latest_activity'] = latest_post_activity(post)
 
+    should_fetch_votes = post['created'] > time.time() - (60 * 60 * 24 * 1)
+
     for media in post['media']:
         media_collection.update_one(
             {'_id': media},
             {'$addToSet': {'usage': post['url'], 'ts': post['created']}},
             upsert=True)
 
-    result = posts_collection.replace_one(
-        {"_id": post['_id']}, post, upsert=True)
+    result = posts_collection.update_one(
+        {"_id": post['_id']}, {'$set': post}, upsert=True)
     if result.matched_count == 0:
         need_line_break = True
         print(
-            f"💥 пост {post['url']} от {time.strftime('%Y.%m.%d', time.gmtime(post['created']))}")
+            f"💥 пост {post['url']} от {time.strftime('%Y.%m.%d %H:%M', time.gmtime(post['created']))} {post['domain']['prefix']} {post['user']['login']}")
+    # ТУДУ: через некоторое время, спрятать этот код под if сверху
+    # posts_collection.update_many(
+    #     {'_id': {'$ne': post['_id'], 'id': post['id']}},
+    #     {'$set': {'obsolete': True}})
 
-    if post['created'] > time.time() - (60 * 60 * 24 * 7):
-        process_post_votes(post_id, post['created'])
+    if should_fetch_votes:
+        process_post_votes(post=post)
 
     comments_response = requests.get(
-        f"https://d3.ru/api/posts/{post_id}/comments/", timeout=30)
+        f"https://d3.ru/api/posts/{post_id}/comments/", timeout=10)
 
     comments = []
 
@@ -86,13 +93,16 @@ def process_post(post_id):
             need_line_break = True
             if comment['deleted'] is True:
                 print(
-                    f"💥 удаленный комментарий {comment['url']} от {time.strftime('%Y.%m.%d', time.gmtime(comment['created']))}")
+                    f"💥 удаленный комментарий {comment['url']} от {time.strftime('%Y.%m.%d %H:%M', time.gmtime(comment['created']))} {comment['domain']['prefix']} {comment['user']['login']}")
             else:
                 print(
-                    f"💥 комментарий {comment['url']} от {time.strftime('%Y.%m.%d', time.gmtime(comment['created']))}")
+                    f"💥 комментарий {comment['url']} от {time.strftime('%Y.%m.%d %H:%M', time.gmtime(comment['created']))} {comment['domain']['prefix']} {comment['user']['login']}")
 
-        if not comment['deleted'] and comment['created'] > time.time() - (60 * 60 * 24 * 7):
-            process_comment_votes(post_id, comment['id'], comment['created'])
+        if not comment['deleted'] and should_fetch_votes:
+            process_comment_votes(comment=comment)
+    if should_fetch_votes:
+        posts_collection.update_many(
+            {'id': post['id']}, {'$set': {'votes_fetched': int(time.time())}})
 
     if need_line_break:
         print()
@@ -101,7 +111,7 @@ def process_post(post_id):
 
 
 def format_number(number):
-    return "{:,}".format(number).replace(',', ' ')
+    return "{:,}".format(number).replace(',', '_')
 
 
 media_regex = re.compile(
@@ -125,54 +135,63 @@ def get_comment_media(comment):
     return get_media(comment['body'])
 
 
-def upsert_post_vote(post_id, post_created, vote):
+def upsert_post_vote(post, vote):
+    post_id = post['id']
+
+    domain_prefix = ''
+    if 'domain' in post and 'prefix' in post['domain']:
+        domain_prefix = post['domain']['prefix']
+
     doc = {
+        '_id': f"{post_id}|{vote['user']['login']}|{vote['user']['id']}|{vote['vote']}",
         'post_id': post_id,
+        'domain': domain_prefix,
         'vote': vote['vote'],
         'changed': vote['changed'],
-        'user_login': vote['user']['login'],
-        'user_id': vote['user']['id'],
-        'delta': vote['changed'] - post_created
+        'from_user_login': vote['user']['login'],
+        'from_user_id': vote['user']['id'],
+        'to_user_login': post['user']['login'],
+        'to_user_id': post['user']['id'],
+        'delta': vote['changed'] - post['created']
     }
 
-    votes_collection.update_one(
-        {
-            'post_id': post_id,
-            'vote': vote['vote'],
-            'changed': vote['changed'],
-            'user_login': vote['user']['login'],
-            'user_id': vote['user']['id']
-        },
-        {'$set': doc},
+    votes_collection.replace_one(
+        {'_id': doc['_id']},
+        doc,
         upsert=True)
 
 
-def upsert_comment_vote(post_id, comment_id, comment_created, vote):
+def upsert_comment_vote(comment, vote):
+    post_id = comment['post_id']
+    comment_id = comment['id']
+
+    domain_prefix = ''
+    if 'domain' in comment and 'prefix' in comment['domain']:
+        domain_prefix = comment['domain']['prefix']
+
     doc = {
+        '_id': f"{post_id}|{comment_id}|{vote['user']['login']}|{vote['user']['id']}|{vote['vote']}",
         'post_id': post_id,
         'comment_id': comment_id,
+        'domain': domain_prefix,
         'vote': vote['vote'],
-        'changed': vote['changed'],
-        'user_login': vote['user']['login'],
-        'user_id': vote['user']['id'],
-        'delta': vote['changed'] - comment_created
+        'from_user_login': vote['user']['login'],
+        'from_user_id': vote['user']['id'],
+        'to_user_login': comment['user']['login'],
+        'to_user_id': comment['user']['id'],
+        'delta': vote['changed'] - comment['created']
     }
 
-    votes_collection.update_one(
-        {
-            'post_id': post_id,
-            'comment_id': post_id,
-            'vote': vote['vote'],
-            'changed': vote['changed'],
-            'user_login': vote['user']['login'],
-            'user_id': vote['user']['id']
-        },
-        {'$set': doc},
+    votes_collection.replace_one(
+        {'_id': doc['_id']},
+        doc,
         upsert=True)
 
 
-def process_post_votes(post_id, post_created):
+def process_post_votes(post):
     try:
+        post_id = post['id']
+
         headers = {
             'X-Futuware-UID': os.environ['UID'],
             'X-Futuware-SID': os.environ['SID']
@@ -180,33 +199,37 @@ def process_post_votes(post_id, post_created):
 
         page = 1
         url = f'https://d3.ru/api/posts/{post_id}/votes/?per_page=210&page={page}'
-        response = requests.get(url, headers=headers, timeout=30).json()
+        response = requests.get(url, headers=headers, timeout=10).json()
 
-        if 'status' in response and response['status'] == 'error':
-            print('❌', response)
+        if response is not None and 'status' in response and response['status'] == 'error':
+            print('❌', 'process_post_votes', response)
             return
 
-        while response['upvotes'] is not None and response['downvotes'] is not None:
+        while response is not None and response['upvotes'] is not None and response['downvotes'] is not None:
+            if response['upvotes'] == [] and response['downvotes'] == []:
+                break
             if response['upvotes'] is not None:
                 for vote in response['upvotes']:
-                    upsert_post_vote(post_id, post_created, vote)
+                    upsert_post_vote(post=post, vote=vote)
             if response['downvotes'] is not None:
                 for vote in response['downvotes']:
-                    upsert_post_vote(post_id, post_created, vote)
+                    upsert_post_vote(post=post, vote=vote)
 
             if response['page'] == response['page_count']:
                 break
 
             page += 1
             url = f'https://d3.ru/api/posts/{post_id}/votes/?per_page=210&page={page}'
-            response = requests.get(url, headers=headers, timeout=30).json()
+            response = requests.get(url, headers=headers, timeout=10).json()
     except Exception as e:  # pylint: disable=broad-exception-caught
         traceback_str = traceback.format_exc()
         print('❌', e, traceback_str)
 
 
-def process_comment_votes(post_id, comment_id, comment_created):
+def process_comment_votes(comment):
     try:
+        comment_id = comment['id']
+
         headers = {
             'X-Futuware-UID': os.environ['UID'],
             'X-Futuware-SID': os.environ['SID']
@@ -214,28 +237,28 @@ def process_comment_votes(post_id, comment_id, comment_created):
 
         page = 1
         url = f'https://d3.ru/api/comments/{comment_id}/votes/?per_page=210&page={page}'
-        response = requests.get(url, headers=headers, timeout=30).json()
+        response = requests.get(url, headers=headers, timeout=10).json()
 
-        if 'status' in response and response['status'] == 'error':
-            print('❌', response)
+        if response is not None and 'status' in response and response['status'] == 'error':
+            print('❌', 'process_comment_votes', response)
             return
 
-        while response['upvotes'] is not None and response['downvotes'] is not None:
+        while response is not None and response['upvotes'] is not None and response['downvotes'] is not None:
+            if response['upvotes'] == [] and response['downvotes'] == []:
+                break
             if response['upvotes'] is not None:
                 for vote in response['upvotes']:
-                    upsert_comment_vote(post_id, comment_id,
-                                        comment_created, vote)
+                    upsert_comment_vote(comment=comment, vote=vote)
             if response['downvotes'] is not None:
                 for vote in response['downvotes']:
-                    upsert_comment_vote(post_id, comment_id,
-                                        comment_created, vote)
+                    upsert_comment_vote(comment=comment, vote=vote)
 
             if response['page'] == response['page_count']:
                 break
 
             page += 1
             url = f'https://d3.ru/api/comments/{comment_id}/votes/?per_page=210&page={page}'
-            response = requests.get(url, headers=headers, timeout=30).json()
+            response = requests.get(url, headers=headers, timeout=10).json()
     except Exception as e:  # pylint: disable=broad-exception-caught
         traceback_str = traceback.format_exc()
         print('❌', e, traceback_str)

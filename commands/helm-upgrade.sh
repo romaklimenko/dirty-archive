@@ -1,1 +1,0 @@
-helm upgrade dirty-archive ./helm --install --history-max 3

@@ -5,9 +5,11 @@ metadata:
   labels:
     {{- include "labels" . | nindent 4 }}
 spec:
+  concurrencyPolicy: Forbid
   schedule: {{ .Values.activities.schedule | quote }}
   jobTemplate:
     spec:
+      backoffLimit: 0
       ttlSecondsAfterFinished: {{ .Values.activities.ttlSecondsAfterFinished }}
       template:
         spec:

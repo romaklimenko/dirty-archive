@@ -3,8 +3,9 @@ import os
 import random
 import time
 import traceback
-from datetime import timedelta, datetime
+from datetime import datetime, timedelta
 
+from media import media
 from pymongo import ASCENDING, DESCENDING
 
 from app import format_number, process_post
@@ -50,42 +51,22 @@ def get_lock_timestamp():
 
 def get_posts_to_skip():
     condition = {
-        '$and': [
-            {
-                'latest_activity': {'$lt': easing_threshold},
-                'fetched': {'$gt': easing_threshold}
-            },
-            {
-                '$or': [{'lock': {'$gt': time.time()}}, {'lock': {'$exists': False}}]
-            }
-        ]
+        'latest_activity': {'$lt': easing_threshold},
+        'fetched': {'$gt': easing_threshold}
     }
     for post in posts_collection.find(condition, {'id': 1}):
         posts_to_skip.add(post['id'])
-
-    posts_collection.update_many(
-        condition, {'$set': {'lock': get_lock_timestamp()}})
 
     return posts_to_skip
 
 
 def get_failures_to_skip():
     condition = {
-        '$and': [
-            {
-                'failed': {'$gt': easing_threshold},
-            },
-            {
-                '$or': [{'lock': {'$gt': time.time()}}, {'lock': {'$exists': False}}]
-            }
-        ]
+        'failed': {'$gt': easing_threshold},
     }
 
     for failure in failures_collection.find(condition):
         failures_to_skip.add(failure['_id'])
-
-    failures_collection.update_many(
-        condition, {'$set': {'lock': get_lock_timestamp()}})
 
     return failures_to_skip
 
@@ -116,7 +97,7 @@ def should_process(post_id):  # pylint: disable=redefined-outer-name
         return True
 
     # дадим небольшой шанс
-    return random.random() < 1 / int(os.getenv('ACTIVITIES_SKIP_PROBABILITY_DENOMINATOR', '1000'))
+    return random.random() < (1 / int(os.getenv('ACTIVITIES_SKIP_PROBABILITY_DENOMINATOR', default='1000')))
 
 
 post_ids = list(filter(should_process, post_ids))
@@ -135,7 +116,7 @@ for post_id in post_ids:
     try:
         processed_posts += 1
 
-        if (processed_posts - posts_to_process_count) % 1000 == 0:
+        if (processed_posts - posts_to_process_count) % 1_000 == 0:
             remaining_posts = format_number(
                 processed_posts - posts_to_process_count)
             processed_percent = round(
@@ -169,3 +150,8 @@ for post_id in post_ids:
         continue
 
 print(timedelta(seconds=time.time() - process_start), 'Обработка завершена')
+
+media()
+
+print(timedelta(seconds=time.time() - process_start),
+      'Обработка картинок завершена')
