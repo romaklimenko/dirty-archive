@@ -1,6 +1,6 @@
-flask
-google-cloud-storage
-Pillow
-pymongo
-python-dotenv
-requests
+Flask==2.2.3
+google-cloud-storage==2.7.0
+Pillow==9.4.0
+pymongo==4.3.3
+python-dotenv==0.21.1
+requests==2.30.0
