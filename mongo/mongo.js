@@ -1,8 +1,8 @@
 db = db.getSiblingDB("dirty");
 
-function createIndex(collectionName, data) {
+function createIndex(collectionName, data, spec = {}) {
   print(`Creating index for ${collectionName}: ${JSON.stringify(data)}...`);
-  db.getCollection(collectionName).createIndex(data);
+  db.getCollection(collectionName).createIndex(data, spec);
   print(`Index created for ${collectionName}: ${JSON.stringify(data)} ✅`);
 }
 
@@ -17,6 +17,7 @@ createIndex("posts", { "domain.prefix": 1 });
 createIndex("posts", { media: 1 });
 
 createIndex("posts", { latest_activity: 1, fetched: 1 });
+createIndex("posts", { votes_fetched: 1, id: 1, _id: -1 });
 
 createIndex("comments", { id: 1 });
 createIndex("comments", { post_id: 1 });
@@ -43,7 +44,7 @@ createIndex("media", { length: 1 });
 createIndex("media", { error: 1 });
 createIndex("media", { selected: 1 });
 
-createIndex("votes", { post_id: 1, vote: 1, changed: 1, user_login: 1, user_id: 1 }, { unique: true });
-createIndex("votes", { post_id: 1, comment_id: 1, vote: 1, changed: 1, user_login: 1, user_id: 1 }, { unique: true });
+createIndex("votes", { post_id: 1 });
+
 
 print("All indexes are created ✅");
