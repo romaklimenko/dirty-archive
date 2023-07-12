@@ -7,10 +7,16 @@ metadata:
 spec:
   schedule: {{ .Values.votes.schedule | quote }}
   jobTemplate:
+    metadata:
+      labels:
+        {{- include "labels" . | nindent 8 }}
     spec:
       backoffLimit: 0
       ttlSecondsAfterFinished: {{ .Values.votes.ttlSecondsAfterFinished }}
       template:
+        metadata:
+          labels:
+            {{- include "labels" . | nindent 12 }}
         spec:
           containers:
             - name: votes
@@ -18,6 +24,8 @@ spec:
               imagePullPolicy: Always
               env:
               - name: PYTHONUNBUFFERED
+                value: "true"
+              - name: PROMETHEUS_DISABLE_CREATED_SERIES
                 value: "true"
               - name: MONGO_CONNECTION_STRING
                 value: "{{ .Values.mongo }}"
@@ -45,6 +53,8 @@ spec:
               - name: account-key
                 mountPath: "/etc/account-key"
                 readOnly: true
+              ports:
+              - containerPort: 8000
               command:
                 - python
                 - ./app/votes.py

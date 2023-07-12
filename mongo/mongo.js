@@ -10,6 +10,8 @@ createIndex("posts", { id: 1 });
 // createIndex("posts", { title: 1 });
 createIndex("posts", { created: 1 });
 createIndex("posts", { date: 1 });
+createIndex("posts", { month: 1 });
+createIndex("posts", { year: 1 });
 createIndex("posts", { rating: 1 });
 // createIndex("posts", { url: 1 });
 createIndex("posts", { "user.login": 1 });
@@ -18,6 +20,7 @@ createIndex("posts", { media: 1 });
 
 createIndex("posts", { latest_activity: 1, fetched: 1 });
 createIndex("posts", { votes_fetched: 1, id: 1, _id: -1 });
+createIndex("posts", { votes_fetched: 1, obsolete: 1, id: 1, _id: -1 });
 
 createIndex("comments", { id: 1 });
 createIndex("comments", { post_id: 1 });

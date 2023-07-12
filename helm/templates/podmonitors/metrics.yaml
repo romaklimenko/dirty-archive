@@ -1,0 +1,19 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PodMonitor
+metadata:
+  name: {{ .Release.Name }}-pod-monitor
+  namespace: observability
+  labels:
+    {{- include "labels" . | nindent 4 }}
+    release: kube-prom-stack
+spec:
+  namespaceSelector:
+    matchNames:
+      - {{ .Release.Namespace }}
+  selector:
+    matchLabels:
+      app: dirty-archive
+  podMetricsEndpoints:
+  - targetPort: 8000
+    path: /metrics
+    interval: 60s

@@ -5,14 +5,21 @@ import time
 import traceback
 from datetime import datetime, timedelta
 
+import prometheus_client
+
 from media import media
 from pymongo import ASCENDING, DESCENDING
 
-from app import format_number, process_post
+from app import format_number, process_post, start_metrics_server
 from mongo import failures_collection, posts_collection
 
 process_start = int(time.time())
 print(timedelta(seconds=0), 'Начинаем обработку.')
+
+DIRTY_POSTS_PROCESSED_POSTS_ERRORS_TOTAL = prometheus_client.Counter(
+    'dirty_posts_processed_posts_errors_total', 'The total number of errors during posts processing.')
+
+start_metrics_server()
 
 
 def get_timedelta():
@@ -52,7 +59,8 @@ def get_lock_timestamp():
 def get_posts_to_skip():
     condition = {
         'latest_activity': {'$lt': easing_threshold},
-        'fetched': {'$gt': easing_threshold}
+        'fetched': {'$gt': easing_threshold},
+        'obsolete': False,
     }
     for post in posts_collection.find(condition, {'id': 1}):
         posts_to_skip.add(post['id'])
@@ -132,6 +140,7 @@ for post_id in post_ids:
 
         errors = 0
     except Exception as e:  # pylint: disable=broad-except
+        DIRTY_POSTS_PROCESSED_POSTS_ERRORS_TOTAL.inc()
         traceback_str = traceback.format_exc()
         failures_collection.replace_one(
             {'_id': f'post_id#{post_id}'},

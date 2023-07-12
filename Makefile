@@ -7,5 +7,8 @@ docker-push:
 helm-upgrade:
 		helm upgrade dirty-archive ./helm --install --history-max 3
 
+helm-dry-run:
+		helm upgrade dirty-archive ./helm --install --history-max 3 --dry-run
+
 create-secret:
 		kubectl create secret generic account-key --from-file=account-key.json=./account-key.json

@@ -1,0 +1,19 @@
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: {{ .Release.Name }}-service-monitor
+  namespace: observability
+  labels:
+    {{- include "labels" . | nindent 4 }}
+    release: kube-prom-stack
+spec:
+  endpoints:
+    - interval: 60s
+      path: /metrics
+      port: metrics
+  namespaceSelector:
+    matchNames:
+      - {{ .Release.Namespace }}
+  selector:
+    matchLabels:
+      role: metrics
