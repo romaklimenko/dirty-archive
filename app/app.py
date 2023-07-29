@@ -10,41 +10,52 @@ import traceback
 import prometheus_client
 import requests
 
-from mongo import (comments_collection, media_collection, posts_collection,
-                   votes_collection)
+from mongo import (
+    comments_collection,
+    failures_collection,
+    media_collection,
+    posts_collection,
+    votes_collection,
+)
 
 # Disable default metrics
 prometheus_client.REGISTRY.unregister(prometheus_client.GC_COLLECTOR)
 prometheus_client.REGISTRY.unregister(prometheus_client.PLATFORM_COLLECTOR)
 prometheus_client.REGISTRY.unregister(prometheus_client.PROCESS_COLLECTOR)
 
+# Votes
 DIRTY_NEW_POST_VOTE_RECORDS_TOTAL = prometheus_client.Counter(
     'dirty_new_post_vote_records_total', 'The total number of new post vote records added.')
 DIRTY_UNCHANGED_POST_VOTE_RECORDS_TOTAL = prometheus_client.Counter(
     'dirty_unchanged_post_vote_records_total', 'The total number of unchanged post vote records.')
 
+# Comments
 DIRTY_NEW_COMMENT_VOTE_RECORDS_TOTAL = prometheus_client.Counter(
     'dirty_new_comment_vote_records_total', 'The total number of new comment vote records added.')
 DIRTY_UNCHANGED_COMMENT_VOTE_RECORDS_TOTAL = prometheus_client.Counter(
     'dirty_unchanged_comment_vote_records_total', 'The total number of unchanged comment vote records.')
-
-DIRTY_VOTES_PROCESSED_POSTS_TOTAL = prometheus_client.Counter(
-    'dirty_votes_processed_posts_total', 'The total number of posts for which votes were processed.')
-DIRTY_VOTES_PROCESSED_POSTS_ERRORS_TOTAL = prometheus_client.Counter(
-    'dirty_votes_processed_posts_errors_total', 'The total number of errors during votes processing.')
-
-DIRTY_NEW_POST_RECORDS_TOTAL = prometheus_client.Counter(
-    'dirty_new_post_records_total', 'The total number of new post records added.')
-DIRTY_UNCHANGED_POST_RECORDS_TOTAL = prometheus_client.Counter(
-    'dirty_unchanged_post_records_total', 'The total number of unchanged post records.')
 DIRTY_NEW_COMMENT_RECORDS_TOTAL = prometheus_client.Counter(
     'dirty_new_comment_records_total', 'The total number of new comment records added.')
 DIRTY_UNCHANGED_COMMENT_RECORDS_TOTAL = prometheus_client.Counter(
     'dirty_unchanged_comment_records_total', 'The total number of unchanged comment records.')
 
+# Posts
+DIRTY_VOTES_PROCESSED_POSTS_TOTAL = prometheus_client.Counter(
+    'dirty_votes_processed_posts_total', 'The total number of posts for which votes were processed.')
+DIRTY_VOTES_PROCESSED_POSTS_ERRORS_TOTAL = prometheus_client.Counter(
+    'dirty_votes_processed_posts_errors_total', 'The total number of errors during votes processing.')
+
 DIRTY_POSTS_PROCESSED_POSTS_TOTAL = prometheus_client.Counter(
     'dirty_posts_processed_posts_total', 'The total number of posts processed.')
+DIRTY_POSTS_PROCESSED_POSTS_ERRORS_TOTAL = prometheus_client.Counter(
+    'dirty_posts_processed_posts_errors_total', 'The total number of errors during posts processing.')
 
+DIRTY_NEW_POST_RECORDS_TOTAL = prometheus_client.Counter(
+    'dirty_new_post_records_total', 'The total number of new post records added.')
+DIRTY_UNCHANGED_POST_RECORDS_TOTAL = prometheus_client.Counter(
+    'dirty_unchanged_post_records_total', 'The total number of unchanged post records.')
+
+# Media
 DIRTY_NEW_MEDIA_RECORDS_TOTAL = prometheus_client.Counter(
     'dirty_new_media_records_total', 'The total number of new media records added.')
 DIRTY_UNCHANGED_MEDIA_RECORDS_TOTAL = prometheus_client.Counter(
@@ -62,116 +73,131 @@ def latest_post_activity(post):
 
 
 def process_post(post_id):
-    need_line_break = False
+    try:
+        need_line_break = False
 
-    response = requests.get(f"https://d3.ru/api/posts/{post_id}/", timeout=30)
-    if response.status_code != 200:
-        raise Exception(  # pylint: disable=broad-exception-raised
-            response.status_code)
-    post = response.json()
+        response = requests.get(
+            f"https://d3.ru/api/posts/{post_id}/", timeout=30)
+        if response.status_code != 200:
+            raise Exception(  # pylint: disable=broad-exception-raised
+                response.status_code)
+        post = response.json()
 
-    post["_id"] = f"{post['id']}.{post['changed']}"
-    post['url'] = f"https://d3.ru/{post['id']}"
-    post['fetched'] = int(time.time())
-    post['date'] = time.strftime('%Y-%m-%d', time.gmtime(post['created']))
-    post['month'] = time.strftime('%Y-%m', time.gmtime(post['created']))
-    post['year'] = time.strftime('%Y', time.gmtime(post['created']))
-    post['media'] = get_post_media(post)
-    post['latest_activity'] = latest_post_activity(post)
-    post['obsolete'] = False
+        post["_id"] = f"{post['id']}.{post['changed']}"
+        post['url'] = f"https://d3.ru/{post['id']}"
+        post['fetched'] = int(time.time())
+        post['date'] = time.strftime('%Y-%m-%d', time.gmtime(post['created']))
+        post['month'] = time.strftime('%Y-%m', time.gmtime(post['created']))
+        post['year'] = time.strftime('%Y', time.gmtime(post['created']))
+        post['media'] = get_post_media(post)
+        post['latest_activity'] = latest_post_activity(post)
+        post['obsolete'] = False
 
-    should_fetch_votes = \
-        post['latest_activity'] > time.time() - (60 * 60 * 24 * 30) or \
-        posts_collection.count_documents(
-            {
-                'id': post['id'],
-                'obsolete': False,
-                'votes_fetched': {'$lt': time.time() - (60 * 60 * 24 * 30)}
-            }) > 0
+        should_fetch_votes = \
+            post['latest_activity'] > time.time() - (60 * 60 * 24 * 30) or \
+            posts_collection.count_documents(
+                {
+                    'id': post['id'],
+                    'obsolete': False,
+                    'votes_fetched': {'$lt': time.time() - (60 * 60 * 24 * 30)}
+                }) > 0
 
-    for media in post['media']:
-        result = media_collection.update_one(
-            {'_id': media},
-            {'$addToSet': {'usage': post['url'], 'ts': post['created']}},
-            upsert=True)
-        if result.matched_count == 0:
-            DIRTY_NEW_MEDIA_RECORDS_TOTAL.inc()
-        else:
-            DIRTY_UNCHANGED_MEDIA_RECORDS_TOTAL.inc()
-
-    result = posts_collection.update_one(
-        {"_id": post['_id']}, {'$set': post}, upsert=True)
-    if result.matched_count == 0:
-        DIRTY_NEW_POST_RECORDS_TOTAL.inc()
-        should_fetch_votes = True
-        need_line_break = True
-        print(
-            f"💥 пост {post['url']} от {time.strftime('%Y.%m.%d %H:%M', time.gmtime(post['created']))} {post['domain']['prefix']} {post['user']['login']}")
-    else:
-        DIRTY_UNCHANGED_POST_RECORDS_TOTAL.inc()
-
-    # помечаем устаревшие записи
-    posts_collection.update_many(
-        {'_id': {'$ne': post['_id']}, 'id': post['id']},
-        {'$set': {'fetched': post['fetched'], 'obsolete': True}})
-
-    comments_response = requests.get(
-        f"https://d3.ru/api/posts/{post_id}/comments/", timeout=30)
-
-    comments = []
-
-    if comments_response.status_code == 200:
-        comments = comments_response.json()['comments']
-
-    for comment in comments:
-        if 'body' not in comment:
-            comment['body'] = ''
-
-        post['latest_activity'] = max(
-            post['latest_activity'], comment['created'])
-
-        comment["_id"] = f"{comment['id']}.{hashlib.md5(comment['body'].encode()).hexdigest()}"
-        comment["post_id"] = post["id"]
-        comment['domain'] = post['domain']
-        comment["url"] = f"https://d3.ru/{comment['post_id']}#{comment['id']}"
-        comment['fetched'] = int(time.time())
-        comment['date'] = time.strftime(
-            '%Y-%m-%d', time.gmtime(comment['created']))
-
-        comment['media'] = get_comment_media(comment)
-        for media in comment['media']:
+        for media in post['media']:
             result = media_collection.update_one(
                 {'_id': media},
-                {'$addToSet': {
-                    'usage': comment['url'], 'ts': comment['created']}},
+                {'$addToSet': {'usage': post['url'], 'ts': post['created']}},
                 upsert=True)
             if result.matched_count == 0:
                 DIRTY_NEW_MEDIA_RECORDS_TOTAL.inc()
             else:
                 DIRTY_UNCHANGED_MEDIA_RECORDS_TOTAL.inc()
 
-        result = comments_collection.replace_one(
-            {"_id": comment["_id"]}, comment, upsert=True)
+        result = posts_collection.update_one(
+            {"_id": post['_id']}, {'$set': post}, upsert=True)
         if result.matched_count == 0:
-            DIRTY_NEW_COMMENT_RECORDS_TOTAL.inc()
+            DIRTY_NEW_POST_RECORDS_TOTAL.inc()
             should_fetch_votes = True
             need_line_break = True
-            if comment['deleted'] is True:
-                print(
-                    f"💥 удаленный комментарий {comment['url']} от {time.strftime('%Y.%m.%d %H:%M', time.gmtime(comment['created']))} {comment['domain']['prefix']} {comment['user']['login']}")
-            else:
-                print(
-                    f"💥 комментарий {comment['url']} от {time.strftime('%Y.%m.%d %H:%M', time.gmtime(comment['created']))} {comment['domain']['prefix']} {comment['user']['login']}")
+            print(
+                f"💥 пост {post['url']} от {time.strftime('%Y.%m.%d %H:%M', time.gmtime(post['created']))} {post['domain']['prefix']} {post['user']['login']}: \"{post['title']}\"")
         else:
-            DIRTY_UNCHANGED_COMMENT_RECORDS_TOTAL.inc()
+            DIRTY_UNCHANGED_POST_RECORDS_TOTAL.inc()
 
-    if should_fetch_votes:
-        process_votes(post=post)
+        # помечаем устаревшие записи
+        posts_collection.update_many(
+            {'_id': {'$ne': post['_id']}, 'id': post['id']},
+            {'$set': {'fetched': post['fetched'], 'obsolete': True}})
 
-    if need_line_break:
-        print()
+        comments_response = requests.get(
+            f"https://d3.ru/api/posts/{post_id}/comments/", timeout=30)
 
-    return (post, comments)
+        comments = []
+
+        if comments_response.status_code == 200:
+            comments = comments_response.json()['comments']
+
+        for comment in comments:
+            if 'body' not in comment:
+                comment['body'] = ''
+
+            post['latest_activity'] = max(
+                post['latest_activity'], comment['created'])
+
+            comment["_id"] = f"{comment['id']}.{hashlib.md5(comment['body'].encode()).hexdigest()}"
+            comment["post_id"] = post["id"]
+            comment['domain'] = post['domain']
+            comment["url"] = f"https://d3.ru/{comment['post_id']}#{comment['id']}"
+            comment['fetched'] = int(time.time())
+            comment['date'] = time.strftime(
+                '%Y-%m-%d', time.gmtime(comment['created']))
+
+            comment['media'] = get_comment_media(comment)
+            for media in comment['media']:
+                result = media_collection.update_one(
+                    {'_id': media},
+                    {'$addToSet': {
+                        'usage': comment['url'], 'ts': comment['created']}},
+                    upsert=True)
+                if result.matched_count == 0:
+                    DIRTY_NEW_MEDIA_RECORDS_TOTAL.inc()
+                else:
+                    DIRTY_UNCHANGED_MEDIA_RECORDS_TOTAL.inc()
+
+            result = comments_collection.replace_one(
+                {"_id": comment["_id"]}, comment, upsert=True)
+            if result.matched_count == 0:
+                DIRTY_NEW_COMMENT_RECORDS_TOTAL.inc()
+                should_fetch_votes = True
+                need_line_break = True
+                if comment['deleted'] is True:
+                    print(
+                        f"💥 удаленный комментарий {comment['url']} от {time.strftime('%Y.%m.%d %H:%M', time.gmtime(comment['created']))} {comment['domain']['prefix']} {comment['user']['login']}")
+                else:
+                    print(
+                        f"💥 комментарий {comment['url']} от {time.strftime('%Y.%m.%d %H:%M', time.gmtime(comment['created']))} {comment['domain']['prefix']} {comment['user']['login']}")
+            else:
+                DIRTY_UNCHANGED_COMMENT_RECORDS_TOTAL.inc()
+
+        if should_fetch_votes:
+            process_votes(post=post)
+
+        if need_line_break:
+            print()
+
+        DIRTY_POSTS_PROCESSED_POSTS_TOTAL.inc()
+        return (post, comments)
+    except Exception as e:
+        DIRTY_POSTS_PROCESSED_POSTS_ERRORS_TOTAL.inc()
+        traceback_str = traceback.format_exc()
+        failures_collection.replace_one(
+            {'_id': f'post_id#{post_id}'},
+            {
+                '_id': f'post_id#{post_id}',
+                'error': str(e),
+                'traceback': traceback_str,
+                'failed': int(time.time())
+            }, upsert=True)
+        raise e
 
 
 def format_number(number):

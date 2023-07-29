@@ -5,8 +5,6 @@ import time
 import traceback
 from datetime import datetime, timedelta
 
-import prometheus_client
-
 from media import media
 from pymongo import ASCENDING, DESCENDING
 
@@ -15,9 +13,6 @@ from mongo import failures_collection, posts_collection
 
 process_start = int(time.time())
 print(timedelta(seconds=0), 'Начинаем обработку.')
-
-DIRTY_POSTS_PROCESSED_POSTS_ERRORS_TOTAL = prometheus_client.Counter(
-    'dirty_posts_processed_posts_errors_total', 'The total number of errors during posts processing.')
 
 start_metrics_server()
 
@@ -28,69 +23,51 @@ def get_timedelta():
 
 errors = 0
 
-easing_threshold = int(time.time()) - (60 * 60 * 24) * 30
-print(f'{get_timedelta()} Пороговое время: {datetime.fromtimestamp(easing_threshold)}.')
+threshold = int(time.time()) - (60 * 60 * 24) * 30
+print(f'{get_timedelta()} Пороговое время: {datetime.fromtimestamp(threshold)}.')
 
 recent_post = posts_collection.find({}).sort('id', DESCENDING).limit(1)[0]
-recent_post_id = 1_000_000
+recent_post_id = None
 if recent_post is not None:
     recent_post_id = recent_post['id']
-print(f'{get_timedelta()} Последний пост в базе данных: https://d3.ru/{recent_post_id}/.')
+    print(f'{get_timedelta()} Последний пост в базе данных: https://d3.ru/{recent_post_id}/.')
+else:
+    recent_post_id = 1_000_000
+    print(f'{get_timedelta()} Последний пост в базе данных не найден.')
 
 post_id_threshold = list(
     posts_collection
-    .find({'created': {'$gt': easing_threshold}})
+    .find({'created': {'$gt': threshold}})
     .sort('created', ASCENDING)
     .limit(1))[0]['id']
 print(f'{get_timedelta()} Пороговый пост: https://d3.ru/{post_id_threshold}/.')
-
-failures_collection.delete_many({'failed': {'$lt': easing_threshold}})
-print(f'{get_timedelta()} Удалили ошибки, которые произошли до порогового времени.')
 
 processed_posts = 0
 
 iteration_start_processed_posts = processed_posts
 
+post_ids = list(range(0, int(recent_post_id + 1_000)))
 
-def get_lock_timestamp():
-    return int(time.time()) + (60 * 60 * 24) * 1
-
-
-def get_posts_to_skip():
-    condition = {
-        'latest_activity': {'$lt': easing_threshold},
-        'fetched': {'$gt': easing_threshold},
-        'obsolete': False,
-    }
-    for post in posts_collection.find(condition, {'id': 1}):
-        posts_to_skip.add(post['id'])
-
-    return posts_to_skip
-
-
-def get_failures_to_skip():
-    condition = {
-        'failed': {'$gt': easing_threshold},
-    }
-
-    for failure in failures_collection.find(condition):
-        failures_to_skip.add(failure['_id'])
-
-    return failures_to_skip
-
-
-post_ids = list(range(0, int(recent_post_id * 1.5)))
-
-posts_to_skip = set()
-failures_to_skip = set()
-
-failures_to_skip = get_failures_to_skip()
-print(
-    f'{get_timedelta()} Пропустили посты, при получении которых произошли ошибки: {format_number(len(failures_to_skip))} шт.')
-
-posts_to_skip = get_posts_to_skip()
+posts_to_skip = set(
+    map(
+        lambda post_id: post_id['id'],
+        posts_collection.find(
+            {
+                'latest_activity': {'$lt': threshold},
+                'fetched': {'$gt': threshold},
+                'obsolete': False,
+            },
+            {'_id': 0, 'id': 1})))
 print(
     f'{get_timedelta()} Пропустили посты, которые мы недавно обработали: {format_number(len(posts_to_skip))} шт.')
+
+failures_collection.delete_many({'failed': {'$lt': threshold}})
+failures_to_skip = set(
+    map(
+        lambda failure: failure['_id'],
+        failures_collection.find({})))
+print(
+    f'{get_timedelta()} Пропустили посты, при получении которых произошли ошибки: {format_number(len(failures_to_skip))} шт.')
 
 
 def should_process(post_id):  # pylint: disable=redefined-outer-name
@@ -137,19 +114,9 @@ for post_id in post_ids:
         (post, comments) = process_post(post_id)
 
         failures_collection.delete_one({'_id': f'post_id#{post_id}'})
-
         errors = 0
     except Exception as e:  # pylint: disable=broad-except
-        DIRTY_POSTS_PROCESSED_POSTS_ERRORS_TOTAL.inc()
         traceback_str = traceback.format_exc()
-        failures_collection.replace_one(
-            {'_id': f'post_id#{post_id}'},
-            {
-                '_id': f'post_id#{post_id}',
-                'error': str(e),
-                'traceback': traceback_str,
-                'failed': int(time.time())
-            }, upsert=True)
         if processed_posts > posts_to_process_count:
             processed_posts -= 1
         if str(e) != '404':
