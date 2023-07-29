@@ -21,6 +21,8 @@ createIndex("posts", { media: 1 });
 createIndex("posts", { latest_activity: 1, fetched: 1 });
 createIndex("posts", { votes_fetched: 1, id: 1, _id: -1 });
 createIndex("posts", { votes_fetched: 1, obsolete: 1, id: 1, _id: -1 });
+createIndex("posts", { fetched: 1 });
+createIndex("posts", { failed: 1 });
 
 createIndex("comments", { id: 1 });
 createIndex("comments", { post_id: 1 });

@@ -9,14 +9,10 @@ import traceback
 
 import prometheus_client
 import requests
+from pymongo import ASCENDING
 
-from mongo import (
-    comments_collection,
-    failures_collection,
-    media_collection,
-    posts_collection,
-    votes_collection,
-)
+from mongo import (comments_collection, failures_collection, media_collection,
+                   posts_collection, votes_collection)
 
 # Disable default metrics
 prometheus_client.REGISTRY.unregister(prometheus_client.GC_COLLECTOR)
@@ -55,6 +51,21 @@ DIRTY_NEW_POST_RECORDS_TOTAL = prometheus_client.Counter(
 DIRTY_UNCHANGED_POST_RECORDS_TOTAL = prometheus_client.Counter(
     'dirty_unchanged_post_records_total', 'The total number of unchanged post records.')
 
+
+def get_dirty_posts_days_from_earliest_processed_post():
+    return (int(time.time()) - posts_collection
+            .find({'obsolete': False, 'failed': 0})
+            .sort('fetched', ASCENDING)
+            .limit(1)[0]['fetched']) / 60 / 60 / 24
+
+
+dirty_posts_days_from_earliest_processed_post = get_dirty_posts_days_from_earliest_processed_post()
+DIRTY_POSTS_DAYS_FROM_EARLIEST_PROCESSED_POST = prometheus_client.Gauge(
+    'dirty_posts_days_from_earliest_processed_post',
+    'The number of days from earliest processed post.')
+DIRTY_POSTS_DAYS_FROM_EARLIEST_PROCESSED_POST.set(
+    dirty_posts_days_from_earliest_processed_post)
+
 # Media
 DIRTY_NEW_MEDIA_RECORDS_TOTAL = prometheus_client.Counter(
     'dirty_new_media_records_total', 'The total number of new media records added.')
@@ -86,6 +97,7 @@ def process_post(post_id):
         post["_id"] = f"{post['id']}.{post['changed']}"
         post['url'] = f"https://d3.ru/{post['id']}"
         post['fetched'] = int(time.time())
+        post['failed'] = 0
         post['date'] = time.strftime('%Y-%m-%d', time.gmtime(post['created']))
         post['month'] = time.strftime('%Y-%m', time.gmtime(post['created']))
         post['year'] = time.strftime('%Y', time.gmtime(post['created']))
@@ -184,6 +196,11 @@ def process_post(post_id):
         if need_line_break:
             print()
 
+        failures_collection.delete_one({'_id': f'post_id#{post_id}'})
+
+        DIRTY_POSTS_DAYS_FROM_EARLIEST_PROCESSED_POST.set(
+            get_dirty_posts_days_from_earliest_processed_post())
+
         DIRTY_POSTS_PROCESSED_POSTS_TOTAL.inc()
         return (post, comments)
     except Exception as e:
@@ -197,6 +214,8 @@ def process_post(post_id):
                 'traceback': traceback_str,
                 'failed': int(time.time())
             }, upsert=True)
+        posts_collection.update_many(
+            {'id': post_id, 'obsolete': False}, {'$set': {'failed': time.time()}})
         raise e
 
 

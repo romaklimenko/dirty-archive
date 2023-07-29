@@ -113,7 +113,6 @@ for post_id in post_ids:
 
         (post, comments) = process_post(post_id)
 
-        failures_collection.delete_one({'_id': f'post_id#{post_id}'})
         errors = 0
     except Exception as e:  # pylint: disable=broad-except
         traceback_str = traceback.format_exc()
