@@ -15,11 +15,11 @@ def get_timedelta():
     return timedelta(seconds=time.time() - process_start)
 
 
-def get_dirty_votes_days_from_earliest_processed_post():
-    return (int(time.time()) - posts_collection
-            .find({'votes_fetched': {'$gt': 0}})
-            .sort('votes_fetched', ASCENDING)
-            .limit(1)[0]['votes_fetched']) / 60 / 60 / 24
+def get_dirty_votes_earliest_processed_post_timestamp():
+    return posts_collection \
+        .find({'votes_fetched': {'$gt': 0}, 'obsolete': False}) \
+        .sort('votes_fetched', ASCENDING) \
+        .limit(1)[0]['votes_fetched']
 
 
 process_start = int(time.time())
@@ -29,13 +29,13 @@ start_metrics_server()
 posts_collection.update_many({'votes_fetched': {'$exists': False}}, {
                              '$set': {'votes_fetched': 0}})
 
-dirty_votes_days_from_earliest_processed_post = get_dirty_votes_days_from_earliest_processed_post()
+dirty_votes_earliest_processed_post_timestamp = get_dirty_votes_earliest_processed_post_timestamp()
 
-DIRTY_VOTES_DAYS_FROM_EARLIEST_PROCESSED_POST = prometheus_client.Gauge(
-    'dirty_votes_days_from_earliest_processed_post', 'The number of days from earliest processed post.')
+DIRTY_VOTES_EARLIEST_PROCESSED_POST_TIMESTAMP = prometheus_client.Gauge(
+    'dirty_votes_earliest_processed_post_timestamp', 'The timestamp of earliest vote-processed post.')
 
-DIRTY_VOTES_DAYS_FROM_EARLIEST_PROCESSED_POST.set(
-    dirty_votes_days_from_earliest_processed_post)
+DIRTY_VOTES_EARLIEST_PROCESSED_POST_TIMESTAMP.set(
+    dirty_votes_earliest_processed_post_timestamp)
 
 dirty_votes_processed_more_than_30_days_ago_posts_total = posts_collection.count_documents(
     {'votes_fetched': {'$lt': int(time.time()) - (60 * 60 * 24) * 30}, 'obsolete': False})
@@ -74,8 +74,8 @@ for post in posts_collection \
         f'{get_timedelta()} {processed_posts_count} https://d3.ru/{post_id}/ от {time.strftime("%Y.%m.%d %H:%M", time.gmtime(post["created"]))} {post["domain"]["prefix"]} {post["user"]["login"]}')
 
     if process_votes(post=post):
-        DIRTY_VOTES_DAYS_FROM_EARLIEST_PROCESSED_POST.set(
-            get_dirty_votes_days_from_earliest_processed_post())
+        DIRTY_VOTES_EARLIEST_PROCESSED_POST_TIMESTAMP.set(
+            get_dirty_votes_earliest_processed_post_timestamp())
 
         dirty_votes_processed_more_than_30_days_ago_posts_total -= 1
         DIRTY_VOTES_PROCESSED_MORE_THAN_30_DAYS_AGO_POSTS_TOTAL.set(

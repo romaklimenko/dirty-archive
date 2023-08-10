@@ -23,6 +23,9 @@ createIndex("posts", { votes_fetched: 1, id: 1, _id: -1 });
 createIndex("posts", { votes_fetched: 1, obsolete: 1, id: 1, _id: -1 });
 createIndex("posts", { fetched: 1 });
 createIndex("posts", { failed: 1 });
+createIndex("posts", { country_code: 1 });
+createIndex("posts", { obsolete: 1, failed: 1, fetched: 1 });
+createIndex("posts", { id: 1, obsolete: 1, votes_fetched: 1 }, { partialFilterExpression: { obsolete: false } });
 
 createIndex("comments", { id: 1 });
 createIndex("comments", { post_id: 1 });
@@ -35,6 +38,7 @@ createIndex("comments", { "domain.prefix": 1 });
 createIndex("comments", { media: 1 });
 createIndex("comments", { body: "text" });
 createIndex("comments", { fetched: 1 });
+createIndex("comments", { country_code: 1 });
 
 createIndex("failures", { failed: -1 });
 createIndex("failures", { error: 1 });

@@ -5,6 +5,7 @@ import time
 import traceback
 from datetime import datetime, timedelta
 
+import prometheus_client
 from media import media
 from pymongo import ASCENDING, DESCENDING
 
@@ -15,6 +16,21 @@ process_start = int(time.time())
 print(timedelta(seconds=0), 'Начинаем обработку.')
 
 start_metrics_server()
+
+
+def get_dirty_posts_earliest_processed_post_timestamp():
+    return posts_collection \
+        .find({'obsolete': False, 'failed': 0}) \
+        .sort('fetched', ASCENDING) \
+        .limit(1)[0]['fetched']
+
+
+dirty_posts_earliest_processed_post_timestamp = get_dirty_posts_earliest_processed_post_timestamp()
+DIRTY_POSTS_EARLIEST_PROCESSED_POST_TIMESTAMP = prometheus_client.Gauge(
+    'dirty_posts_earliest_processed_post_timestamp',
+    'The timestamp of earliest processed post.')
+DIRTY_POSTS_EARLIEST_PROCESSED_POST_TIMESTAMP.set(
+    dirty_posts_earliest_processed_post_timestamp)
 
 
 def get_timedelta():
@@ -58,6 +74,7 @@ posts_to_skip = set(
                 'obsolete': False,
             },
             {'_id': 0, 'id': 1})))
+
 print(
     f'{get_timedelta()} Пропустили посты, которые мы недавно обработали: {format_number(len(posts_to_skip))} шт.')
 
@@ -112,6 +129,9 @@ for post_id in post_ids:
             iteration_start_processed_posts = processed_posts
 
         (post, comments) = process_post(post_id)
+
+        DIRTY_POSTS_EARLIEST_PROCESSED_POST_TIMESTAMP.set(
+            get_dirty_posts_earliest_processed_post_timestamp())
 
         errors = 0
     except Exception as e:  # pylint: disable=broad-except

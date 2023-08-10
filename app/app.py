@@ -3,13 +3,13 @@ import copy
 import hashlib
 import json
 import os
+import random
 import re
 import time
 import traceback
 
 import prometheus_client
 import requests
-from pymongo import ASCENDING
 
 from mongo import (comments_collection, failures_collection, media_collection,
                    posts_collection, votes_collection)
@@ -51,21 +51,6 @@ DIRTY_NEW_POST_RECORDS_TOTAL = prometheus_client.Counter(
 DIRTY_UNCHANGED_POST_RECORDS_TOTAL = prometheus_client.Counter(
     'dirty_unchanged_post_records_total', 'The total number of unchanged post records.')
 
-
-def get_dirty_posts_days_from_earliest_processed_post():
-    return (int(time.time()) - posts_collection
-            .find({'obsolete': False, 'failed': 0})
-            .sort('fetched', ASCENDING)
-            .limit(1)[0]['fetched']) / 60 / 60 / 24
-
-
-dirty_posts_days_from_earliest_processed_post = get_dirty_posts_days_from_earliest_processed_post()
-DIRTY_POSTS_DAYS_FROM_EARLIEST_PROCESSED_POST = prometheus_client.Gauge(
-    'dirty_posts_days_from_earliest_processed_post',
-    'The number of days from earliest processed post.')
-DIRTY_POSTS_DAYS_FROM_EARLIEST_PROCESSED_POST.set(
-    dirty_posts_days_from_earliest_processed_post)
-
 # Media
 DIRTY_NEW_MEDIA_RECORDS_TOTAL = prometheus_client.Counter(
     'dirty_new_media_records_total', 'The total number of new media records added.')
@@ -77,13 +62,18 @@ def start_metrics_server(port=8000):
     prometheus_client.start_http_server(port)
 
 
-def latest_post_activity(post):
-    if 'changed' in post and post['changed'] is not None:
-        return max(post['created'], post['changed'])
-    return post['created']
+posts_to_vote_process_cache = {
+    'post_ids': set(),
+    'expires': 0
+}
+
+DIRTY_POSTS_PROCESS_POST_SECONDS = prometheus_client.Summary(
+    'dirty_posts_process_post_seconds', 'The time it takes to process a post.')
 
 
+@DIRTY_POSTS_PROCESS_POST_SECONDS.time()
 def process_post(post_id):
+    method_start = time.time()
     try:
         need_line_break = False
 
@@ -102,17 +92,7 @@ def process_post(post_id):
         post['month'] = time.strftime('%Y-%m', time.gmtime(post['created']))
         post['year'] = time.strftime('%Y', time.gmtime(post['created']))
         post['media'] = get_post_media(post)
-        post['latest_activity'] = latest_post_activity(post)
         post['obsolete'] = False
-
-        should_fetch_votes = \
-            post['latest_activity'] > time.time() - (60 * 60 * 24 * 30) or \
-            posts_collection.count_documents(
-                {
-                    'id': post['id'],
-                    'obsolete': False,
-                    'votes_fetched': {'$lt': time.time() - (60 * 60 * 24 * 30)}
-                }) > 0
 
         for media in post['media']:
             result = media_collection.update_one(
@@ -123,6 +103,49 @@ def process_post(post_id):
                 DIRTY_NEW_MEDIA_RECORDS_TOTAL.inc()
             else:
                 DIRTY_UNCHANGED_MEDIA_RECORDS_TOTAL.inc()
+
+        comments_response = requests.get(
+            f"https://d3.ru/api/posts/{post_id}/comments/", timeout=30)
+
+        comments = []
+
+        if comments_response.status_code == 200:
+            comments = comments_response.json()['comments']
+
+        # latest_activity
+        post['latest_activity'] = post['created']
+
+        for comment in comments:
+            post['latest_activity'] = max(
+                post['latest_activity'], comment['created'])
+
+        # refresh posts_to_vote_process_cache
+        if posts_to_vote_process_cache['expires'] < time.time():
+            post_ids = set(map(lambda x: x[id], posts_collection.find(
+                {
+                    'id': post['id'],
+                    'obsolete': False,
+                    'votes_fetched': {'$lt': time.time() - (60 * 60 * 24 * 30)}
+                },
+                {'_id': 0, 'id': 1})))
+            posts_to_vote_process_cache['post_ids'] = post_ids
+            posts_to_vote_process_cache['expires'] = time.time() + 60 * 60
+
+        should_fetch_votes = \
+            post['latest_activity'] > time.time() - (60 * 60 * 24 * 30) or \
+            post['id'] in posts_to_vote_process_cache['post_ids'] or \
+            random.random() < (
+                1 / int(os.getenv('ACTIVITIES_SKIP_PROBABILITY_DENOMINATOR', default='1000')))
+
+        post_country_code = None
+        comments_country_codes = None
+
+        if post['latest_activity'] > 1497484800:  # 2017-06-15 - дата, с которой появились флажки
+            post_country_code, comments_country_codes = get_country_codes(
+                post_id)
+
+        if post_country_code is not None and post_country_code != '':
+            post['country_code'] = post_country_code
 
         result = posts_collection.update_one(
             {"_id": post['_id']}, {'$set': post}, upsert=True)
@@ -138,22 +161,11 @@ def process_post(post_id):
         # помечаем устаревшие записи
         posts_collection.update_many(
             {'_id': {'$ne': post['_id']}, 'id': post['id']},
-            {'$set': {'fetched': post['fetched'], 'obsolete': True}})
-
-        comments_response = requests.get(
-            f"https://d3.ru/api/posts/{post_id}/comments/", timeout=30)
-
-        comments = []
-
-        if comments_response.status_code == 200:
-            comments = comments_response.json()['comments']
+            {'$set': {'obsolete': True}})
 
         for comment in comments:
             if 'body' not in comment:
                 comment['body'] = ''
-
-            post['latest_activity'] = max(
-                post['latest_activity'], comment['created'])
 
             comment["_id"] = f"{comment['id']}.{hashlib.md5(comment['body'].encode()).hexdigest()}"
             comment["post_id"] = post["id"]
@@ -162,6 +174,8 @@ def process_post(post_id):
             comment['fetched'] = int(time.time())
             comment['date'] = time.strftime(
                 '%Y-%m-%d', time.gmtime(comment['created']))
+            if comments_country_codes is not None and comment['id'] in comments_country_codes and comments_country_codes[comment['id']] != '':
+                comment['country_code'] = comments_country_codes[comment['id']]
 
             comment['media'] = get_comment_media(comment)
             for media in comment['media']:
@@ -198,10 +212,14 @@ def process_post(post_id):
 
         failures_collection.delete_one({'_id': f'post_id#{post_id}'})
 
-        DIRTY_POSTS_DAYS_FROM_EARLIEST_PROCESSED_POST.set(
-            get_dirty_posts_days_from_earliest_processed_post())
-
         DIRTY_POSTS_PROCESSED_POSTS_TOTAL.inc()
+
+        method_elapsed = time.time() - method_start
+
+        if method_elapsed > 60:
+            print(
+                f"⚠️  {int(method_elapsed)} секунд на обработку поста https://d3.ru/{post_id}/")
+
         return (post, comments)
     except Exception as e:
         DIRTY_POSTS_PROCESSED_POSTS_ERRORS_TOTAL.inc()
@@ -216,7 +234,40 @@ def process_post(post_id):
             }, upsert=True)
         posts_collection.update_many(
             {'id': post_id, 'obsolete': False}, {'$set': {'failed': time.time()}})
+
+        method_elapsed = time.time() - method_start
+
+        if method_elapsed > 60:
+            print(
+                f"⚠️  {int(method_elapsed)} секунд на обработку поста https://d3.ru/{post_id}/")
+
         raise e
+
+
+def get_country_codes(post_id):
+    try:
+        post_url = f'https://d3.ru/{post_id}/'
+        cookies = dict(sid=os.environ['SID'], uid=os.environ['UID'])
+        text_response = requests.get(
+            post_url, cookies=cookies, timeout=30).text
+        string_to_find = '            window.entryStorages[window.pageName] = '
+        for i, line in enumerate(str.splitlines(text_response)):
+            if line.startswith(string_to_find):
+                entry_storages = json.loads(
+                    str
+                    .splitlines(text_response)[i]
+                    .replace(string_to_find, ''))
+                post_country_code = entry_storages['post']['country_code']
+
+                comments_country_codes = dict()
+                for comment in entry_storages['comments']:
+                    comments_country_codes[comment['id']
+                                           ] = comment['country_code']
+
+                return (post_country_code, comments_country_codes)
+    except Exception as e:  # pylint: disable=broad-except
+        print('get_country_codes', e)
+        return (None, dict())
 
 
 def format_number(number):
@@ -382,6 +433,11 @@ def process_comment_votes(comment):
         response = requests.get(url, headers=headers, timeout=30).json()
 
 
+DIRTY_VOTES_PROCESS_VOTES_SECONDS = prometheus_client.Summary(
+    'dirty_votes_process_votes_seconds', 'The time it takes to process votes.')
+
+
+@DIRTY_VOTES_PROCESS_VOTES_SECONDS.time()
 def process_votes(post):
     try:
         process_post_votes(post=post)
