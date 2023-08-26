@@ -31,12 +31,6 @@ spec:
                 value: "{{ .Values.mongo }}"
               - name: MONGO_DB_NAME
                 value: dirty
-              - name: POSTS_COLLECTION_NAME
-                value: posts
-              - name: COMMENTS_COLLECTION_NAME
-                value: comments
-              - name: VOTES_COLLECTION_NAME
-                value: votes
               - name: GOOGLE_APPLICATION_CREDENTIALS
                 value: /etc/account-key/account-key.json
               - name: UID

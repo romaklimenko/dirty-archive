@@ -37,15 +37,6 @@ DIRTY_VOTES_EARLIEST_PROCESSED_POST_TIMESTAMP = prometheus_client.Gauge(
 DIRTY_VOTES_EARLIEST_PROCESSED_POST_TIMESTAMP.set(
     dirty_votes_earliest_processed_post_timestamp)
 
-dirty_votes_processed_more_than_30_days_ago_posts_total = posts_collection.count_documents(
-    {'votes_fetched': {'$lt': int(time.time()) - (60 * 60 * 24) * 30}, 'obsolete': False})
-
-DIRTY_VOTES_PROCESSED_MORE_THAN_30_DAYS_AGO_POSTS_TOTAL = prometheus_client.Gauge(
-    'dirty_votes_processed_more_than_30_days_ago_posts_total', 'The total number of posts votes-processed more than 30 days ago.')
-
-DIRTY_VOTES_PROCESSED_MORE_THAN_30_DAYS_AGO_POSTS_TOTAL.set(
-    dirty_votes_processed_more_than_30_days_ago_posts_total)
-
 print(timedelta(seconds=0), 'Начинаем обработку.')
 
 processed_posts_count = 0
@@ -76,12 +67,5 @@ for post in posts_collection \
     if process_votes(post=post):
         DIRTY_VOTES_EARLIEST_PROCESSED_POST_TIMESTAMP.set(
             get_dirty_votes_earliest_processed_post_timestamp())
-
-        dirty_votes_processed_more_than_30_days_ago_posts_total -= 1
-        DIRTY_VOTES_PROCESSED_MORE_THAN_30_DAYS_AGO_POSTS_TOTAL.set(
-            max(dirty_votes_processed_more_than_30_days_ago_posts_total, 0))
-    if processed_posts_count % 100 == 0:
-        dirty_votes_processed_more_than_30_days_ago_posts_total = posts_collection.count_documents(
-            {'votes_fetched': {'$lt': int(time.time()) - (60 * 60 * 24) * 30}, 'obsolete': False})
 
 print(timedelta(seconds=time.time() - process_start), 'Обработка завершена')

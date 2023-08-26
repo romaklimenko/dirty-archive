@@ -3,7 +3,6 @@ import copy
 import hashlib
 import json
 import os
-import random
 import re
 import time
 import traceback
@@ -11,8 +10,9 @@ import traceback
 import prometheus_client
 import requests
 
-from mongo import (comments_collection, failures_collection, media_collection,
-                   posts_collection, votes_collection)
+from mongo import (comments_collection, country_codes_collection,
+                   failures_collection, media_collection, posts_collection,
+                   votes_collection)
 
 # Disable default metrics
 prometheus_client.REGISTRY.unregister(prometheus_client.GC_COLLECTOR)
@@ -57,15 +57,26 @@ DIRTY_NEW_MEDIA_RECORDS_TOTAL = prometheus_client.Counter(
 DIRTY_UNCHANGED_MEDIA_RECORDS_TOTAL = prometheus_client.Counter(
     'dirty_unchanged_media_records_total', 'The total number of unchanged media records.')
 
+# Country Codes
+DIRTY_GET_COUNTRY_CODES_FROM_DB_TOTAL = prometheus_client.Counter(
+    'dirty_get_country_codes_from_db_total', 'The total number of get_country_codes_from_db calls.')
+DIRTY_GET_COUNTRY_CODES_FROM_DB_ERRORS_TOTAL = prometheus_client.Counter(
+    'dirty_get_country_codes_from_db_errors_total', 'The total number of get_country_codes_from_db errors.')
+
+DIRTY_GET_COUNTRY_CODES_TOTAL = prometheus_client.Counter(
+    'dirty_get_country_codes_total', 'The total number of get_country_codes calls.')
+DIRTY_GET_COUNTRY_CODES_ERRORS_TOTAL = prometheus_client.Counter(
+    'dirty_get_country_codes_errors_total', 'The total number of get_country_codes errors.')
+
+DIRTY_GET_COUNTRY_CODES_FROM_DB_SECONDS = prometheus_client.Summary(
+    'dirty_get_country_codes_from_db_seconds', 'The time it takes to call get_country_codes_from_db.')
+DIRTY_GET_COUNTRY_CODES_SECONDS = prometheus_client.Summary(
+    'dirty_get_country_codes_seconds', 'The time it takes to call get_country_codes.')
+
 
 def start_metrics_server(port=8000):
     prometheus_client.start_http_server(port)
 
-
-posts_to_vote_process_cache = {
-    'post_ids': set(),
-    'expires': 0
-}
 
 DIRTY_POSTS_PROCESS_POST_SECONDS = prometheus_client.Summary(
     'dirty_posts_process_post_seconds', 'The time it takes to process a post.')
@@ -119,30 +130,21 @@ def process_post(post_id):
             post['latest_activity'] = max(
                 post['latest_activity'], comment['created'])
 
-        # refresh posts_to_vote_process_cache
-        if posts_to_vote_process_cache['expires'] < time.time():
-            post_ids = set(map(lambda x: x[id], posts_collection.find(
-                {
-                    'id': post['id'],
-                    'obsolete': False,
-                    'votes_fetched': {'$lt': time.time() - (60 * 60 * 24 * 30)}
-                },
-                {'_id': 0, 'id': 1})))
-            posts_to_vote_process_cache['post_ids'] = post_ids
-            posts_to_vote_process_cache['expires'] = time.time() + 60 * 60
-
-        should_fetch_votes = \
-            post['latest_activity'] > time.time() - (60 * 60 * 24 * 30) or \
-            post['id'] in posts_to_vote_process_cache['post_ids'] or \
-            random.random() < (
-                1 / int(os.getenv('ACTIVITIES_SKIP_PROBABILITY_DENOMINATOR', default='1000')))
+        should_fetch_votes = post['latest_activity'] > time.time(
+        ) - (60 * 60 * 24 * 30)
 
         post_country_code = None
         comments_country_codes = None
 
-        if post['latest_activity'] > 1497484800:  # 2017-06-15 - дата, с которой появились флажки
-            post_country_code, comments_country_codes = get_country_codes(
-                post_id)
+        # if post['latest_activity'] > 1497484800:  # 2017-06-15 - дата, с которой появились флажки
+        post_country_code, comments_country_codes = get_country_codes_from_db(
+            post_id)
+
+        for comment in comments:
+            if comment['id'] not in comments_country_codes:
+                post_country_code, comments_country_codes = get_country_codes(
+                    post_id)
+                break
 
         if post_country_code is not None and post_country_code != '':
             post['country_code'] = post_country_code
@@ -244,10 +246,36 @@ def process_post(post_id):
         raise e
 
 
+@DIRTY_GET_COUNTRY_CODES_FROM_DB_SECONDS.time()
+def get_country_codes_from_db(post_id):
+    try:
+        doc = country_codes_collection.find_one({'_id': post_id})
+
+        if doc is None:
+            DIRTY_GET_COUNTRY_CODES_FROM_DB_TOTAL.inc()
+            return (None, {})
+
+        comment_country_codes_str_keys = json.loads(
+            doc['comments_country_codes'])
+        comment_country_codes_int_keys = {
+            int(k): v for k, v in comment_country_codes_str_keys.items()
+        }
+
+        DIRTY_GET_COUNTRY_CODES_FROM_DB_TOTAL.inc()
+
+        return (doc['post_country_code'], comment_country_codes_int_keys)
+    except Exception as e:  # pylint: disable=broad-except
+        traceback_str = traceback.format_exc()
+        print('❌ get_country_codes_from_db:', e, traceback_str)
+        DIRTY_GET_COUNTRY_CODES_FROM_DB_ERRORS_TOTAL.inc()
+        return (None, {})
+
+
+@DIRTY_GET_COUNTRY_CODES_SECONDS.time()
 def get_country_codes(post_id):
     try:
         post_url = f'https://d3.ru/{post_id}/'
-        cookies = dict(sid=os.environ['SID'], uid=os.environ['UID'])
+        cookies = {'sid': os.environ['SID'], 'uid': os.environ['UID']}
         text_response = requests.get(
             post_url, cookies=cookies, timeout=30).text
         string_to_find = '            window.entryStorages[window.pageName] = '
@@ -259,15 +287,27 @@ def get_country_codes(post_id):
                     .replace(string_to_find, ''))
                 post_country_code = entry_storages['post']['country_code']
 
-                comments_country_codes = dict()
+                comments_country_codes = {}
                 for comment in entry_storages['comments']:
                     comments_country_codes[comment['id']
                                            ] = comment['country_code']
 
+                country_codes_collection.replace_one(
+                    {'_id': post_id},
+                    {
+                        '_id': post_id,
+                        'post_country_code': post_country_code,
+                        'comments_country_codes': json.dumps(comments_country_codes)
+                    }, upsert=True)
+                DIRTY_GET_COUNTRY_CODES_TOTAL.inc()
                 return (post_country_code, comments_country_codes)
+        DIRTY_GET_COUNTRY_CODES_TOTAL.inc()
+        return (None, {})
     except Exception as e:  # pylint: disable=broad-except
-        print('get_country_codes', e)
-        return (None, dict())
+        traceback_str = traceback.format_exc()
+        print('❌ get_country_codes:', e, traceback_str)
+        DIRTY_GET_COUNTRY_CODES_ERRORS_TOTAL.inc()
+        return (None, {})
 
 
 def format_number(number):
