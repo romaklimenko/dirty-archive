@@ -6,246 +6,66 @@
 
 С помощью этих простых скриптов можно хоть как-то сохранить то, что может быть удалено в любой момент.
 
-Установка зависимостей:
+Со временем это выродилось в Kubernetes кластер с Grafana и MongoDB. Регулярно собирались данные обо всех постах, комментариях, голосах, голосах в карму, подписчиках сообществ, постов на главной, картинках с их EXIF-тегами и т.д.
 
-```shell
-pip install -r requirements.txt
-```
+![./images/grafana.png](./images/grafana.png)
 
-```shell
-python posts.py 1 500000
-```
+Проект закрыт в связи с потерей моего интереса к нему.
 
-Индексы MongoDB:
+---
 
-`mongosh --file mongo.js`
+Количество данных на момент закрытия проекта (19 декабря 2023):
 
-Пример поиска по тексту комментариев:
-
-```shell
-db.comments.find( { $text: { $search: "jovan" } } )
-```
-
-Загрузка картинок в Google Cloud Storage и обновление информации EXIF:
-
-```shell
-python media.py
-```
-
-### Примеры данных
-
-Самый первый пост:
-
-```shell
-db.posts.find().sort({ id: -1 }).limit(1)
-```
-
-```JSON
-{
-    "_id" : "5.1651249358",
-    "rating" : 249,
-    "domain" : {
-        "title" : "",
-        "url" : "https://d3.ru",
-        "readers_count" : 15,
-        "is_subscribed" : false,
-        "is_ignored" : false,
-        "color_schema" : {
-            "irony_color" : "cc3333",
-            "links_system_color" : "a1a1a1",
-            "background_color" : "ffffff",
-            "header_color" : "4e80bd",
-            "text_color" : "242424"
-        },
-        "is_adult" : false,
-        "prefix" : "",
-        "logo_url" : "https://d3.ru/static/i/logo_main_retina.png",
-        "id" : 1
-    },
-    "views_count" : 17403,
-    "unread_comments_count" : 0,
-    "country_code" : "",
-    "in_favourites" : false,
-    "title" : "",
-    "data" : {
-        "title" : "",
-        "text" : "Еще один пост, с другой датой",
-        "render_type" : "maxi",
-        "snippet" : null,
-        "link" : null,
-        "media" : null,
-        "type" : "link"
-    },
-    "golden" : true,
-    "id" : 5,
-    "pinned" : false,
-    "user_vote" : null,
-    "can_ban" : false,
-    "_links" : [ 
-        {
-            "href" : "https://d3.ru/api/posts/5/report/",
-            "params" : null,
-            "method" : "post",
-            "rel" : "report_post"
-        }, 
-        {
-            "href" : "https://d3.ru/5/",
-            "params" : null,
-            "method" : "get",
-            "rel" : "html"
-        }
-    ],
-    "url_slug" : "",
-    "tags" : [],
-    "main_image_url" : null,
-    "can_moderate" : false,
-    "hidden_rating_time_to_show" : null,
-    "user" : {
-        "is_golden" : false,
-        "deleted" : false,
-        "gender" : "male",
-        "is_ignored" : false,
-        "rank" : "",
-        "avatar_url" : "https://cdn.jpg.wtf/futurico/50/0b/1419841165-500b2be6558bfcfbf76f898f693b12af.jpg",
-        "karma" : 3098,
-        "active" : true,
-        "login" : "jovan",
-        "rank_color" : null,
-        "id" : 1
-    },
-    "can_delete" : false,
-    "estimate" : 0,
-    "can_unpublish" : false,
-    "in_interests" : false,
-    "can_edit" : false,
-    "favourites_count" : 0,
-    "can_change_render_type" : false,
-    "created" : 1006434184,
-    "changed" : 1651249358,
-    "vote_weight" : 1,
-    "comments_count" : 553,
-    "advertising" : null,
-    "has_subscribed" : false,
-    "can_comment" : false,
-    "url" : "https://d3.ru/5",
-    "date" : "2001-11-22",
-    "media" : [],
-    "fetched" : 1659996492,
-    "latest_activity" : 0
-}
-```
-
-Комментарий с картинкой:
-
-```shell
-db.comments.find({ 'media.0': { $exists: true } }).sort({ id: 1 }).limit(1)
-```
-
-```JSON
-{
-    "_id" : "41383.4dbe50a59301f278f0f52c5868840538",
-    "body" : "<img src=\"https://cdn.jpg.wtf/futurico/c5/26/1369906240-c526fe58ce5f5097c295ea3711842384.jpeg\" width=\"350\" height=\"278\">",
-    "rating" : 0,
-    "can_delete" : false,
-    "deleted" : false,
-    "can_moderate" : false,
-    "hidden_rating_time_to_show" : null,
-    "tree_level" : 0,
-    "country_code" : "",
-    "date_order" : 19,
-    "id" : 41383,
-    "can_edit" : false,
-    "created" : 1037110443,
-    "vote_weight" : 1,
-    "rating_order" : 19,
-    "can_remove_comment_threads" : false,
-    "user_vote" : null,
-    "can_ban" : false,
-    "parent_id" : null,
-    "unread" : false,
-    "user" : {
-        "is_golden" : false,
-        "deleted" : false,
-        "gender" : "male",
-        "is_ignored" : false,
-        "rank" : "",
-        "avatar_url" : "https://cdn.jpg.wtf/futurico/50/0b/1419841165-500b2be6558bfcfbf76f898f693b12af.jpg",
-        "karma" : 3098,
-        "active" : true,
-        "login" : "jovan",
-        "rank_color" : null,
-        "id" : 1
-    },
-    "post_id" : 5016,
-    "domain" : {
-        "title" : "",
-        "url" : "https://d3.ru",
-        "readers_count" : 15,
-        "is_subscribed" : false,
-        "is_ignored" : false,
-        "color_schema" : {
-            "irony_color" : "cc3333",
-            "links_system_color" : "a1a1a1",
-            "background_color" : "ffffff",
-            "header_color" : "4e80bd",
-            "text_color" : "242424"
-        },
-        "is_adult" : false,
-        "prefix" : "",
-        "logo_url" : "https://d3.ru/static/i/logo_main_retina.png",
-        "id" : 1
-    },
-    "url" : "https://d3.ru/5016#41383",
-    "date" : "2002-11-12",
-    "media" : [ 
-        "https://cdn.jpg.wtf/futurico/c5/26/1369906240-c526fe58ce5f5097c295ea3711842384.jpeg"
-    ],
-    "fetched" : 1659998583
-}
-```
-
-Информация о картинке:
-
-
-```shell
-db.media.find({ _id: 'https://cdn.jpg.wtf/futurico/c5/26/1369906240-c526fe58ce5f5097c295ea3711842384.jpeg' })
-```
-
-```JSON
-{
-    "_id" : "https://cdn.jpg.wtf/futurico/c5/26/1369906240-c526fe58ce5f5097c295ea3711842384.jpeg",
-    "usage" : [ 
-        "https://d3.ru/5016#41383"
-    ],
-    "hash" : "5750a3644671c7b3917a300701dbe9c46e72b1b95e655b705ac8cec016b0814b",
-    "filename" : "1369906240-c526fe58ce5f5097c295ea3711842384.jpeg",
-    "content_type" : "image/jpeg",
-    "length" : 16110,
-    "size" : {
-        "width" : 350,
-        "height" : 278
-    },
-    "exif" : {
-        "tags" : {},
-        "gps" : {},
-        "ifd" : {}
-    }
-}
-```
-
-### Количество данных (конец августа 2022):
-
-```shell
+```js
 db.posts.countDocuments({})
-1.193.908
+1_411_385
 ```
 
-```shell
+```js
 db.comments.countDocuments({})
-18.162.403
+19_233_667
 ```
 
-```shell
+```js
+db.karma.countDocuments({})
+3_713_937
+```
+
+```js
+db.votes.countDocuments({})
+63_289_098
+```
+
+```js
 db.media.countDocuments({})
-2.115.785
+2_246_832
+```
+
+```js
+db.users.countDocuments({})
+157_124
+```
+
+```js
+db.stats()
+{
+    "db" : "dirty",
+    "collections" : 14,
+    "views" : 0,
+    "objects" : 92902833,
+    "avgObjSize" : 510.181559242655,
+    "dataSize" : 47397312198.0,
+    "storageSize" : 20712538112.0,
+    "indexes" : 82,
+    "indexSize" : 16050503680.0,
+    "totalSize" : 36763041792.0, // 34.2382507 GiB
+    "scaleFactor" : 1.0,
+    "fsUsedSize" : 136483467264.0,
+    "fsTotalSize" : 419491782656.0,
+    "ok" : 1.0
+}
+```
+
+```
+mongodump-2023-12-19T15.43.16+0100.zip - 7.56 GiB
 ```
