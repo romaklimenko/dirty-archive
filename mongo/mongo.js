@@ -54,6 +54,10 @@ createIndex("media", { error: 1 });
 createIndex("media", { selected: 1 });
 
 createIndex("votes", { post_id: 1 });
+createIndex("votes", { comment_id: 1 });
+createIndex("votes", { from_user_login: 1 });
+createIndex("votes", { to_user_login: 1 });
+createIndex("votes", { delta: 1 });
 
 
 print("All indexes are created ✅");

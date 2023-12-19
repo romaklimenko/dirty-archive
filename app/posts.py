@@ -18,6 +18,10 @@ print(timedelta(seconds=0), 'Начинаем обработку.')
 start_metrics_server()
 
 
+def get_timedelta():
+    return timedelta(seconds=time.time() - process_start)
+
+
 def get_dirty_posts_earliest_processed_post_timestamp():
     return posts_collection \
         .find({'obsolete': False, 'failed': 0}) \
@@ -31,10 +35,6 @@ DIRTY_POSTS_EARLIEST_PROCESSED_POST_TIMESTAMP = prometheus_client.Gauge(
     'The timestamp of earliest processed post.')
 DIRTY_POSTS_EARLIEST_PROCESSED_POST_TIMESTAMP.set(
     dirty_posts_earliest_processed_post_timestamp)
-
-
-def get_timedelta():
-    return timedelta(seconds=time.time() - process_start)
 
 
 errors = 0
@@ -62,14 +62,13 @@ processed_posts = 0
 
 iteration_start_processed_posts = processed_posts
 
-post_ids = list(range(0, int(recent_post_id + 1_000)))
+post_ids = list(range(0, int(recent_post_id)))
 
 posts_to_skip = set(
     map(
         lambda post_id: post_id['id'],
         posts_collection.find(
             {
-                'latest_activity': {'$lt': threshold},
                 'fetched': {'$gt': threshold},
                 'obsolete': False,
             },
@@ -103,15 +102,39 @@ def should_process(post_id):  # pylint: disable=redefined-outer-name
 
 
 post_ids = list(filter(should_process, post_ids))
+
 posts_to_process_count = len(
     list(filter(lambda post_id: post_id < recent_post_id, post_ids)))
 print(f'{get_timedelta()} Обработаем {format_number(posts_to_process_count)} постов.')
-max_errors = min(10_000, int(posts_to_process_count / 10))
+max_errors = min(1_000, int(posts_to_process_count / 10))
 print(f'{get_timedelta()} Максимальное количество ошибок: {format_number(max_errors)}.')
+
+should_fetch_votes_probability = 0.01
+
+if posts_to_process_count > 25_000:
+    should_fetch_votes_probability = 0
+elif len(
+    list(
+        posts_collection
+        .find(
+            {
+                'votes_fetched': {'$gt': 0, '$lt': time.time() - (60 * 60 * 24 * 31)},
+                'obsolete': False
+            })
+        .limit(1))) > 0:
+    should_fetch_votes_probability = 1.0
+
+print(f'{get_timedelta()} Вероятность получения голосов: {should_fetch_votes_probability}')
 
 iteration_start = int(time.time())
 
+posts_to_vote_process_cache = {
+    'post_ids': set(),
+    'expires': 0
+}
+
 for post_id in post_ids:
+    # for post_id in map(lambda x: x['id'], posts_collection.find({ 'obsolete': False, 'failed': 0, 'fetched': { '$lt': int(time.time()) - (60 * 60 * 24) * 30 } }, { 'id': 1 }).sort('fetched', ASCENDING)):
     if errors > max_errors:
         break
 
@@ -128,7 +151,13 @@ for post_id in post_ids:
             iteration_start = int(time.time())
             iteration_start_processed_posts = processed_posts
 
-        (post, comments) = process_post(post_id)
+        should_fetch_votes = \
+            should_fetch_votes_probability > 0 and \
+            should_fetch_votes_probability <= random.random()
+
+        (post, comments) = process_post(
+            post_id,
+            should_fetch_votes=should_fetch_votes)
 
         DIRTY_POSTS_EARLIEST_PROCESSED_POST_TIMESTAMP.set(
             get_dirty_posts_earliest_processed_post_timestamp())
@@ -143,6 +172,9 @@ for post_id in post_ids:
             print(traceback_str)
         errors += 1
         continue
+
+DIRTY_POSTS_EARLIEST_PROCESSED_POST_TIMESTAMP.set(
+    get_dirty_posts_earliest_processed_post_timestamp())
 
 print(timedelta(seconds=time.time() - process_start), 'Обработка завершена')
 

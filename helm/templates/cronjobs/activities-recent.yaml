@@ -1,25 +1,26 @@
 apiVersion: batch/v1
 kind: CronJob
 metadata:
-  name: activities
+  name: activities-recent
   labels:
     {{- include "labels" . | nindent 4 }}
 spec:
   concurrencyPolicy: Forbid
-  schedule: {{ .Values.activities.schedule | quote }}
+  schedule: {{ .Values.recentActivities.schedule | quote }}
   jobTemplate:
     metadata:
       labels:
         {{- include "labels" . | nindent 8 }}
     spec:
-      ttlSecondsAfterFinished: {{ .Values.activities.ttlSecondsAfterFinished }}
+      backoffLimit: 0
+      ttlSecondsAfterFinished: {{ .Values.recentActivities.ttlSecondsAfterFinished }}
       template:
         metadata:
           labels:
             {{- include "labels" . | nindent 12 }}
         spec:
           containers:
-            - name: activities
+            - name: activities-recent
               image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default "latest" }}"
               imagePullPolicy: Always
               env:
@@ -33,8 +34,6 @@ spec:
                 value: dirty
               - name: GOOGLE_APPLICATION_CREDENTIALS
                 value: /etc/account-key/account-key.json
-              - name: ACTIVITIES_SKIP_PROBABILITY_DENOMINATOR
-                value: "{{ .Values.activities.skipProbabilityDenominator }}"
               - name: UID
                 valueFrom:
                   secretKeyRef:
@@ -53,7 +52,7 @@ spec:
               - containerPort: 8000
               command:
                 - python
-                - ./app/posts.py
+                - ./app/posts_recent.py
           volumes:
           - name: account-key
             secret:
@@ -65,3 +64,4 @@ spec:
             - name: {{ . | quote }}
             {{- end }}
           {{ end }}
+      backoffLimit: 1

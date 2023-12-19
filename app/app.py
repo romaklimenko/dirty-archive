@@ -6,6 +6,7 @@ import os
 import re
 import time
 import traceback
+import warnings
 
 import prometheus_client
 import requests
@@ -13,6 +14,8 @@ import requests
 from mongo import (comments_collection, country_codes_collection,
                    failures_collection, media_collection, posts_collection,
                    votes_collection)
+
+warnings.filterwarnings('ignore')
 
 # Disable default metrics
 prometheus_client.REGISTRY.unregister(prometheus_client.GC_COLLECTOR)
@@ -83,7 +86,7 @@ DIRTY_POSTS_PROCESS_POST_SECONDS = prometheus_client.Summary(
 
 
 @DIRTY_POSTS_PROCESS_POST_SECONDS.time()
-def process_post(post_id):
+def process_post(post_id, should_fetch_votes=False):
     method_start = time.time()
     try:
         need_line_break = False
@@ -130,8 +133,9 @@ def process_post(post_id):
             post['latest_activity'] = max(
                 post['latest_activity'], comment['created'])
 
-        should_fetch_votes = post['latest_activity'] > time.time(
-        ) - (60 * 60 * 24 * 30)
+        should_fetch_votes = \
+            should_fetch_votes or \
+            post['latest_activity'] > time.time() - (60 * 60 * 24 * 29)
 
         post_country_code = None
         comments_country_codes = None
@@ -176,7 +180,9 @@ def process_post(post_id):
             comment['fetched'] = int(time.time())
             comment['date'] = time.strftime(
                 '%Y-%m-%d', time.gmtime(comment['created']))
-            if comments_country_codes is not None and comment['id'] in comments_country_codes and comments_country_codes[comment['id']] != '':
+            if comments_country_codes is not None and \
+                    comment['id'] in comments_country_codes and \
+                    comments_country_codes[comment['id']] != '':
                 comment['country_code'] = comments_country_codes[comment['id']]
 
             comment['media'] = get_comment_media(comment)
@@ -277,7 +283,7 @@ def get_country_codes(post_id):
         post_url = f'https://d3.ru/{post_id}/'
         cookies = {'sid': os.environ['SID'], 'uid': os.environ['UID']}
         text_response = requests.get(
-            post_url, cookies=cookies, timeout=30).text
+            post_url, cookies=cookies, timeout=30, verify=False).text
         string_to_find = '            window.entryStorages[window.pageName] = '
         for i, line in enumerate(str.splitlines(text_response)):
             if line.startswith(string_to_find):
@@ -379,6 +385,7 @@ def upsert_comment_vote(comment, vote):
         'comment_id': comment_id,
         'domain': domain_prefix,
         'vote': vote['vote'],
+        'changed': vote['changed'],
         'from_user_login': vote['user']['login'],
         'from_user_id': vote['user']['id'],
         'to_user_login': comment['user']['login'],
